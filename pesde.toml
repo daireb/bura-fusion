@@ -10,3 +10,4 @@ includes = ["pesde.toml", "src/**", "LICENSE", "FORK.md"]
 [target]
 environment = "roblox"
 lib = "src/init.luau"
+build_files = ["src"]
