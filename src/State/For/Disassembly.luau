@@ -148,44 +148,68 @@ function class._evaluate<S, KI, KO, VI, VO>(
 		pendingPairs[key] = value
 	end
 
+	local unmatchedPairs = {} :: {ForTypes.SubObject<S, KI, KO, VI, VO>}
 	local newSubObjects = {} :: typeof(self._subObjects)
 
 	for subObject in self._subObjects do
-		local reused = false
 		local oldInputKey = subObject.inputKey
 		local oldInputValue = subObject.inputValue
-		local newInputKey: KI
-		-- Reuse when the keys are identical.
-		if not subObject.roamKeys and pendingPairs[oldInputKey] ~= nil then
-			reused = true
-			newInputKey = oldInputKey
-		else -- Try and reuse some other pair instead.
+		local newInputKey: KI, newInputValue: VI
+
+		-- Preserve exact keys before assigning any removed-key sub-objects.
+		if not subObject.roamKeys then
+			if pendingPairs[oldInputKey] == nil then
+				table.insert(unmatchedPairs, subObject)
+				continue
+			end
+			newInputKey, newInputValue = oldInputKey, pendingPairs[oldInputKey]
+		elseif not subObject.roamValues then
+			-- ForValues follows unchanged values as they move between keys.
 			for pendingKey, pendingValue in pendingPairs do
-				reused = true
-				newInputKey = pendingKey
-				if subObject.roamValues then
+				if pendingValue == oldInputValue then
+					newInputKey, newInputValue = pendingKey, pendingValue
 					break
 				end
-				if pendingValue == oldInputValue then
-					-- If the values are the same, then no need to update those,
-					-- so prefer this choice to any other.
-					break 
-				end
 			end
+			if newInputKey == nil then
+				table.insert(unmatchedPairs, subObject)
+				continue
+			end
+		else
+			table.insert(unmatchedPairs, subObject)
+			continue
 		end
-		if reused then
-			local newInputValue = pendingPairs[newInputKey]
+
+		newSubObjects[subObject] = true
+		if newInputKey ~= oldInputKey then
+			subObject.inputKey = newInputKey
+			subObject:invalidateInputKey()
+		end
+		if newInputValue ~= oldInputValue then
+			subObject.inputValue = newInputValue
+			subObject:invalidateInputValue()
+		end
+		pendingPairs[newInputKey] = nil
+	end
+
+	-- Sub-objects that found no genuine match take whatever pairs are left
+	-- over; any surplus beyond the number of pairs is cleaned up.
+	for _, subObject in unmatchedPairs do
+		local oldInputKey = subObject.inputKey
+		local oldInputValue = subObject.inputValue
+		local newInputKey: KI?, newInputValue: VI? = next(pendingPairs)
+		if newInputKey ~= nil then
 			newSubObjects[subObject] = true
 			if newInputKey ~= oldInputKey then
-				subObject.inputKey = newInputKey
+				subObject.inputKey = newInputKey :: KI
 				subObject:invalidateInputKey()
 			end
 			if newInputValue ~= oldInputValue then
-				subObject.inputValue = newInputValue
+				subObject.inputValue = newInputValue :: VI
 				subObject:invalidateInputValue()
 			end
 			pendingPairs[newInputKey] = nil
-		else -- Too many sub objects for the number of pairs.
+		else
 			if subObject.maybeScope ~= nil then
 				doCleanup(subObject.maybeScope)
 				subObject.maybeScope = nil

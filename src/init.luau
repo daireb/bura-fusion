@@ -68,6 +68,7 @@ local Fusion: Fusion = table.freeze {
 	AttributeOut = require(script.Instances.AttributeOut),
 	Child = require(script.Instances.Child),
 	Children = require(script.Instances.Children),
+	Tag = require(script.Instances.Tag),
 	Hydrate = require(script.Instances.Hydrate),
 	New = require(script.Instances.New),
 	OnChange = require(script.Instances.OnChange),

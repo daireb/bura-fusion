@@ -1,3 +1,5 @@
+> This is Bura's private Fusion derivative. Read [FORK.md](FORK.md) for intentional differences from upstream and [backlog.md](backlog.md) for deferred work. The upstream introduction follows.
+
 <img align="left" src="./gh-assets/logo-dark-theme.svg#gh-dark-mode-only" alt="Fusion"><img align="left" src="./gh-assets/logo-light-theme.svg#gh-light-mode-only" alt="Fusion"><a href="https://elttob.uk/Fusion/latest"><img align="right" src="./gh-assets/link-docs.svg" alt="Docs"></a><a href="https://github.com/Elttob/Fusion/releases"><img align="right" src="./gh-assets/link-download.svg" alt="Download"></a><img src="./gh-assets/clearfloat.svg">
 
 **Rediscover the joy of coding.**

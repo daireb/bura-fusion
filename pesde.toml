@@ -1,0 +1,12 @@
+name = "daireb/bura_fusion"
+version = "0.3.0-bura.1"
+description = "Fusion 0.3 with native styling interoperability and collection fixes"
+license = "MIT"
+authors = ["Elttob", "Bura"]
+repository = "https://github.com/daireb/bura-fusion"
+private = true
+includes = ["pesde.toml", "src/**", "LICENSE", "FORK.md"]
+
+[target]
+environment = "roblox"
+lib = "src/init.luau"

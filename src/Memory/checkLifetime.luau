@@ -131,4 +131,14 @@ function checkLifetime.bOutlivesA<A, B, Args...>(
 		)
 	end
 end
+function checkLifetime.formatters.boundTag(
+	instance: Instance,
+	bound: unknown,
+	tag: string
+): (string, string)
+	local selfName = instance.Name
+	local boundName = nameOf(bound, "value")
+	return `The {boundName} (bound to the {tag} CollectionService tag)`, `the {selfName} instance`
+end
+
 return checkLifetime

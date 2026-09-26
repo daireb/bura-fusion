@@ -269,6 +269,7 @@ export type Fusion = {
 
 	Child: ({Child}) -> Child,
 	Children: SpecialKey,
+	Tag: (tagName: string) -> SpecialKey,
 	Out: (propertyName: string) -> SpecialKey,
 	OnEvent: (eventName: string) -> SpecialKey,
 	OnChange: (propertyName: string) -> SpecialKey,
