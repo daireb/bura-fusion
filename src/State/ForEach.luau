@@ -77,7 +77,8 @@ type Child = {
 
 type List = {
 	dirty: {[Child]: true},
-	warnedStateUsed: boolean
+	warnedStateUsed: boolean,
+	warnedExtraOutput: boolean
 }
 
 type Reconciler = Types.GraphObject & {
@@ -107,7 +108,8 @@ local function Child<K, VI, VO, I, S>(
 	identity: I,
 	key: K,
 	item: VI,
-	processor: Processor<K, VI, VO, I, S>
+	processor: Processor<K, VI, VO, I, S>,
+	list: List
 ): Child
 	local self = {} :: any
 	self.scope = scope
@@ -120,8 +122,13 @@ local function Child<K, VI, VO, I, S>(
 	self.itemState = Value(scope, item)
 	self.output = Computed(scope, function(use, buildScope): VO?
 		self.failed = false
-		local ok, outputValue = xpcall(processor, parseError, use, buildScope, self.keyState, self.itemState, identity)
+		local ok: boolean, outputValue: VO?, extraValue: unknown = xpcall(processor, parseError, use, buildScope, self.keyState, self.itemState, identity)
 		if ok then
+			-- A processor carried over from ForPairs still returns its key first.
+			if extraValue ~= nil and not list.warnedExtraOutput then
+				list.warnedExtraOutput = true
+				External.logWarn("forEachExtraOutput", tostring(self.key))
+			end
 			return outputValue
 		end
 		local error: Types.Error = outputValue :: any
@@ -227,7 +234,7 @@ function reconcilerClass._evaluate(
 				dirty[child] = true
 			end
 		else
-			child = Child(deriveScope(outerScope), identity, key, item, self._processor)
+			child = Child(deriveScope(outerScope), identity, key, item, self._processor, self._list)
 		end
 		local first = newChildren[identity]
 		if first == nil then
@@ -394,7 +401,8 @@ local function ForEach<K, VI, VO, I, S>(
 	end
 	local list: List = {
 		dirty = {},
-		warnedStateUsed = false
+		warnedStateUsed = false,
+		warnedExtraOutput = false
 	}
 
 	local reconciler: Reconciler = setmetatable(
