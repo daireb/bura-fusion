@@ -59,6 +59,7 @@ local Fusion: Fusion = table.freeze {
 	ForKeys = require(script.State.ForKeys) :: Types.ForKeysConstructor,
 	ForPairs = require(script.State.ForPairs) :: Types.ForPairsConstructor,
 	ForValues = require(script.State.ForValues) :: Types.ForValuesConstructor,
+	ForEach = require(script.State.ForEach) :: Types.ForEachConstructor,
 	peek = require(script.State.peek),
 	Value = require(script.State.Value),
 
