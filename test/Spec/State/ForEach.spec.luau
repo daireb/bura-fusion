@@ -96,16 +96,34 @@ return function()
 		doCleanup(scope)
 	end)
 
-	it("builds new identities and cleans removed ones", function()
+	it("requires a function that identifies each item", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		expect(function()
+			-- A processor carried over from ForPairs, with no identify.
+			(ForEach :: any)(scope, {"a"}, function(_, _, _, item)
+				return item
+			end)
+		end).to.throw("forEachIdentifyMissing")
+		doCleanup(scope)
+	end)
+
+	it("builds new identities and cleans removed ones, never handing a child to another", function()
 		local expect = getfenv().expect
 
 		local scope = {}
 		local data = Value(scope, {"a", "b"})
 		local builds, cleanups = 0, 0
-		local cells = ForEach(scope, data, byItem, function(_, scope, _, _, id)
+		local seen = {}
+		local cells = ForEach(scope, data, byItem, function(_, scope, _, item, id)
 			builds += 1
 			table.insert(scope, function()
 				cleanups += 1
+			end)
+			-- Eager, like a bound instance property.
+			Observer(scope, item):onChange(function()
+				table.insert(seen, peek(item))
 			end)
 			return id
 		end)
@@ -113,38 +131,11 @@ return function()
 		data:set({"a", "b", "c", "d"})
 		expect(#peek(cells)).to.equal(4)
 		expect(builds).to.equal(4)
+		-- Keys 1 and 2 now hold other identities: d's child moves, e's is built.
 		data:set({"d", "e"})
 		expect(#peek(cells)).to.equal(2)
 		expect(builds).to.equal(5)
 		expect(cleanups).to.equal(3)
-		doCleanup(scope)
-	end)
-
-	it("never hands a child to another identity", function()
-		local expect = getfenv().expect
-
-		local scope = {}
-		local data = Value(scope, {{uid = "a"}})
-		local builds, cleanups = 0, 0
-		local seen = {}
-		local cells = ForEach(scope, data, byUid, function(_, scope, _, item, uid)
-			builds += 1
-			table.insert(scope, function()
-				cleanups += 1
-			end)
-			-- Eager, like a bound instance property.
-			Observer(scope, item):onChange(function()
-				table.insert(seen, `{uid}={peek(item).uid}`)
-			end)
-			return uid
-		end)
-		peek(cells)
-		Observer(scope, cells)
-		-- The same key now holds another identity: a's child goes, c's is built.
-		data:set({{uid = "c"}})
-		expect(peek(cells)[1]).to.equal("c")
-		expect(builds).to.equal(2)
-		expect(cleanups).to.equal(1)
 		expect(#seen).to.equal(0)
 		doCleanup(scope)
 	end)
@@ -154,9 +145,12 @@ return function()
 
 		local scope = {}
 		local data = Value(scope, {false, false} :: {boolean})
-		local builds = 0
-		local cells = ForEach(scope, data, byItem, function(_, _, key, _)
+		local builds, cleanups = 0, 0
+		local cells = ForEach(scope, data, byItem, function(_, scope, key, _)
 			builds += 1
+			table.insert(scope, function()
+				cleanups += 1
+			end)
 			return {key = key}
 		end)
 		local before = table.clone(peek(cells))
@@ -168,6 +162,8 @@ return function()
 		expect(after[3]).to.equal(before[2])
 		expect(peek(after[2].key)).to.equal(2)
 		expect(peek(after[3].key)).to.equal(3)
+		data:set({})
+		expect(cleanups).to.equal(3)
 		doCleanup(scope)
 	end)
 
@@ -244,35 +240,31 @@ return function()
 		local expect = getfenv().expect
 
 		local scope = {}
-		local warnings = {}
-		local logWarn = External.logWarn
-		External.logWarn = function(messageID, ...)
-			table.insert(warnings, messageID)
-		end
-		-- A child matched by its item never sees the item change, so using it
-		-- at the top level is harmless.
-		local ids = Value(scope, {"a", "b"})
-		local idBuilds = 0
-		local byValue = ForEach(scope, ids, byItem, function(use, _, _, item)
-			idBuilds += 1
-			return use(item)
+		local idBuilds, recordBuilds = 0, 0
+		local out
+		local warnings = captureLogs("logWarn", function()
+			-- A child matched by its item never sees the item change, so using
+			-- it at the top level is harmless.
+			local ids = Value(scope, {"a", "b"})
+			local byValue = ForEach(scope, ids, byItem, function(use, _, _, item)
+				idBuilds += 1
+				return use(item)
+			end)
+			peek(byValue)
+			ids:set({"b", "a"})
+			peek(byValue)
+			-- A record's item does change, so using it builds the child again.
+			local records = Value(scope, {{uid = 1, n = 1}})
+			local byField = ForEach(scope, records, byUid, function(use, _, _, item)
+				recordBuilds += 1
+				return use(item).n
+			end)
+			peek(byField)
+			records:set({{uid = 1, n = 2}})
+			peek(byField)
+			records:set({{uid = 1, n = 3}})
+			out = peek(byField)
 		end)
-		peek(byValue)
-		ids:set({"b", "a"})
-		peek(byValue)
-		-- A record's item does change, so using it builds the child again.
-		local records = Value(scope, {{uid = 1, n = 1}})
-		local recordBuilds = 0
-		local byField = ForEach(scope, records, byUid, function(use, _, _, item)
-			recordBuilds += 1
-			return use(item).n
-		end)
-		peek(byField)
-		records:set({{uid = 1, n = 2}})
-		peek(byField)
-		records:set({{uid = 1, n = 3}})
-		local out = peek(byField)
-		External.logWarn = logWarn
 		expect(idBuilds).to.equal(2)
 		expect(out[1]).to.equal(3)
 		expect(recordBuilds).to.equal(3)
@@ -285,18 +277,15 @@ return function()
 		local expect = getfenv().expect
 
 		local scope = {}
-		local warnings = {}
-		local logWarn = External.logWarn
-		External.logWarn = function(messageID, ...)
-			table.insert(warnings, messageID)
-		end
-		local data = Value(scope, {"a", "b"})
-		-- Carried over from a ForPairs processor, which returns its key first.
-		local cells = ForEach(scope, data, byItem, function(_, _, key, _, id)
-			return peek(key), id
+		local out
+		local warnings = captureLogs("logWarn", function()
+			-- Carried over from a ForPairs processor, which returns its key
+			-- first. The input may be a constant table.
+			local cells = ForEach(scope, {"a", "b"}, byItem, function(_, _, key, _, id)
+				return peek(key), id
+			end)
+			out = peek(cells)
 		end)
-		local out = peek(cells)
-		External.logWarn = logWarn
 		expect(out[2]).to.equal(2)
 		expect(#warnings).to.equal(1)
 		expect(warnings[1]).to.equal("forEachExtraOutput")
@@ -307,25 +296,22 @@ return function()
 		local expect = getfenv().expect
 
 		local scope = {}
-		local warnings = {}
-		local logWarn = External.logWarn
-		External.logWarn = function(messageID, ...)
-			table.insert(warnings, messageID)
-		end
-		local a, b = {uid = "a", ready = false}, {uid = "b", ready = true}
-		local data = Value(scope, {x = a, z = b} :: {[string]: any})
-		local cells = ForEach(scope, data, byUid, function(_, _, key, item)
-			local record = peek(item)
-			if not record.ready or peek(key) == "z" then
-				error("not ready yet")
-			end
-			return record.uid
+		local before, after
+		local warnings = captureLogs("logWarn", function()
+			local a, b = {uid = "a", ready = false}, {uid = "b", ready = true}
+			local data = Value(scope, {x = a, z = b} :: {[string]: any})
+			local cells = ForEach(scope, data, byUid, function(_, _, key, item)
+				local record = peek(item)
+				if not record.ready or peek(key) == "z" then
+					error("not ready yet")
+				end
+				return record.uid
+			end)
+			before = table.clone(peek(cells))
+			-- a's item changes and b moves to another key.
+			data:set({x = {uid = "a", ready = true}, w = b})
+			after = peek(cells)
 		end)
-		local before = table.clone(peek(cells))
-		-- a's item changes and b moves to another key.
-		data:set({x = {uid = "a", ready = true}, w = b})
-		local after = peek(cells)
-		External.logWarn = logWarn
 		expect(next(before)).to.equal(nil)
 		expect(after.x).to.equal("a")
 		expect(after.w).to.equal("b")
@@ -338,26 +324,23 @@ return function()
 		local expect = getfenv().expect
 
 		local scope = {}
-		local errors = {}
-		local logErrorNonFatal = External.logErrorNonFatal
-		External.logErrorNonFatal = function(messageID, ...)
-			table.insert(errors, messageID)
-		end
-		local data = Value(scope, {{uid = "a"}, {}, {}, {uid = "d"}} :: {any})
-		local cells = ForEach(scope, data, function(_, record)
-			if record.broken then
-				error("no uid yet")
-			end
-			return record.uid
-		end, function(_, _, _, _, uid)
-			return uid
+		local first, second, third
+		local errors = captureLogs("logErrorNonFatal", function()
+			local data = Value(scope, {{uid = "a"}, {}, {uid = 0 / 0}, {}, {uid = "d"}} :: {any})
+			local cells = ForEach(scope, data, function(_, record)
+				if record.broken then
+					error("no uid yet")
+				end
+				return record.uid
+			end, function(_, _, _, _, uid)
+				return uid
+			end)
+			first = table.clone(peek(cells))
+			data:set({{uid = "a"}, {uid = "b", broken = true}, {uid = "d"}})
+			second = table.clone(peek(cells))
+			data:set({{uid = "a"}, {uid = "b"}, {uid = "d"}})
+			third = peek(cells)
 		end)
-		local first = table.clone(peek(cells))
-		data:set({{uid = "a"}, {uid = "b", broken = true}, {uid = "d"}})
-		local second = table.clone(peek(cells))
-		data:set({{uid = "a"}, {uid = "b"}, {uid = "d"}})
-		local third = peek(cells)
-		External.logErrorNonFatal = logErrorNonFatal
 		expect(#first).to.equal(2)
 		expect(first[2]).to.equal("d")
 		expect(#second).to.equal(2)
