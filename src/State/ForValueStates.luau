@@ -14,17 +14,21 @@ local task = nil -- Disable usage of Roblox's task scheduler
 	is compacted in arrays as in every For object.
 
 	The processor runs inside a computed, as in every For object, so any state
-	it uses at the top level runs it again. Using its own value state that way
-	defeats the point, so it logs a warning once per list.
+	it uses at the top level runs it again. Using its own value state directly
+	that way defeats the point, so it logs a warning once per list.
 
 	Implementation notes:
-	- The shared disassembly reconciles as usual and stays lazy. Sub-objects
-	  only mark a key whose value changed as dirty.
+	- The shared disassembly reconciles as usual. Sub-objects only mark a key
+	  whose value changed as dirty, so no value state is written inside the
+	  reconcile.
 	- One eager distributor per list updates the dirty keys' value states in a
 	  single change, so a reader of several keys sees one consistent update.
 	  It is created right after the For object, so it runs before any child in
-	  the creation-ordered eager pass. Nothing can depend on it, so no user
-	  code runs while an object it could pull is busy.
+	  the creation-ordered eager pass. Nothing can depend on it, so it is never
+	  pulled while busy.
+	- The distributor pulls the disassembly, so unlike other For objects the
+	  input is reconciled at construction and on every change, even when
+	  nothing reads the list. Children still build only when it is read.
 	- A sub-object handed to a different key (one key removed and another
 	  added in the same update) rebuilds against a fresh value state, so no
 	  child ever sees another key's value.
@@ -238,4 +242,4 @@ local function ForValueStates<K, VI, VO, S>(
 	return self
 end
 
-return ForValueStates
+return ForValueStates :: Types.ForValueStatesConstructor

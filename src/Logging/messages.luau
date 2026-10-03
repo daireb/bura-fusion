@@ -18,7 +18,7 @@ return {
 	destroyedTwice = "`doCleanup()` was given something that it is already cleaning up. Unclear how to proceed.",
 	destructorRedundant = "%s destructors no longer do anything. If you wish to run code on destroy, `table.insert` a function into the `scope` argument. See discussion #292 on GitHub for advice.",
 	forKeyCollision = "The key '%s' was returned multiple times simultaneously, which is not allowed in `For` objects.",
-	forValueStatesValueUsed = "A `ForValueStates` processor used its value state at the top level (key '%s'), so it runs again whenever the value changes. Use the value state inside a Computed instead, or use `ForPairs` if running again is intended.",
+	forValueStatesValueUsed = "A `ForValueStates` processor used its value state directly at the top level (key '%s'), so it runs again whenever the value changes. Use the value state inside a Computed instead, or use `ForPairs` if running again is intended.",
 	infiniteLoop = "Detected an infinite loop. Consider adding an explicit breakpoint to your code to prevent a cyclic dependency.",
 	invalidAttributeChangeHandler = "The change handler for the '%s' attribute must be a function.",
 	invalidAttributeOutType = "[AttributeOut] properties must be given Value objects.",
