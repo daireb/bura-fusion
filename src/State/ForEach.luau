@@ -32,6 +32,11 @@ local task = nil -- Disable usage of Roblox's task scheduler
 	- The distributor pulls the reconciler, so unlike other For objects the
 	  input is reconciled at construction and on every change, even when
 	  nothing reads the list. Children still build only when it is read.
+	- Both run inside their input's change, so they log errors rather than
+	  throw them, which would break the input for every other reader. A
+	  non-table input reads as empty, a failing cleanup does not stop the
+	  others, and a change that fails, such as a cycle through a child's
+	  states, puts their old values back until the input changes again.
 	- A child never changes identity, so its state objects live as long as the
 	  child and survive a rebuild. A processor that errors leaves a hole, and
 	  runs again when its key or item changes.
@@ -145,7 +150,8 @@ local function Child<K, VI, VO, I, S>(
 	return self
 end
 
-local function cleanupChild(
+-- Cleans up a child and the later children with its identity.
+local function cleanupChildren(
 	child: Child?
 ): ()
 	while child ~= nil do
@@ -154,7 +160,14 @@ local function cleanupChild(
 			-- Cleared before the cleanup runs, so that nothing it sets off can
 			-- clean this child again.
 			child.scope = nil
-			doCleanup(scope)
+			-- Logged rather than thrown, so that the other children are still
+			-- cleaned up and the change that removed this one carries on.
+			local ok: boolean, err: unknown = xpcall(doCleanup, parseError, scope)
+			if not ok then
+				local error: Types.Error = err :: any
+				error.context = `while cleaning up key {tostring(child.key)}`
+				External.logErrorNonFatal("callbackError", error)
+			end
 		end
 		child = child.nextDuplicate
 	end
@@ -195,7 +208,14 @@ function reconcilerClass._evaluate(
 	local maxIndex = 0
 	local isArray = true
 	local skipped = false
-	for key, item in peek(self._inputTable) do
+	local input = peek(self._inputTable)
+	if typeof(input) ~= "table" then
+		-- Logged rather than thrown, because the list updates with its input
+		-- even when nothing reads it.
+		External.logErrorNonFatal("forEachInputNotTable", nil, typeof(input))
+		input = {}
+	end
+	for key, item in input do
 		count += 1
 		if isArray then
 			if typeof(key) == "number" and key >= 1 and key % 1 == 0 then
@@ -255,7 +275,7 @@ function reconcilerClass._evaluate(
 	-- Children left unmatched lost their item. They are cleaned last, because
 	-- a cleanup may destroy this list, which then cleans the children above.
 	for _, child in oldChildren do
-		cleanupChild(child)
+		cleanupChildren(child)
 	end
 
 	return true
@@ -275,6 +295,7 @@ local DISTRIBUTOR_META = table.freeze {__index = distributorClass}
 local function write(
 	list: List,
 	roots: {Types.GraphObject},
+	oldValues: {unknown},
 	child: Child,
 	state: Types.Value<unknown>,
 	newValue: unknown,
@@ -288,6 +309,7 @@ local function write(
 	end
 	state._EXTREMELY_DANGEROUS_usedAsValue = newValue
 	table.insert(roots, state)
+	oldValues[#roots] = oldValue
 	if not list.warnedStateUsed and not child.failed and child.output.dependencySet[state] then
 		list.warnedStateUsed = true
 		External.logWarn("forEachStateUsed", name, tostring(child.key), name)
@@ -310,17 +332,31 @@ function distributorClass._evaluate(
 		return false
 	end
 	local roots: {Types.GraphObject} = {}
+	local oldValues: {unknown} = {}
 	for child in dirty do
 		if child.scope == nil then
 			continue
 		end
-		write(list, roots, child, child.keyState, child.key, "key")
-		write(list, roots, child, child.itemState, child.item, "item")
+		write(list, roots, oldValues, child, child.keyState, child.key, "key")
+		write(list, roots, oldValues, child, child.itemState, child.item, "item")
 	end
-	table.clear(dirty)
 	-- Joins the eager pass this distributor runs in, so the children's eager
 	-- objects keep their creation order with the rest of that pass.
-	changeMany(roots)
+	local ok: boolean, err: unknown = xpcall(changeMany, parseError, roots)
+	if ok then
+		table.clear(dirty)
+	else
+		-- The change fails before anything sees the new values, as it does for
+		-- a cycle such as an item's observer removing its own entry by key.
+		-- So the old values are put back, and the children stay dirty for the
+		-- next change. Throwing would stop the rest of the running pass.
+		for index, root in roots do
+			local state: Types.Value<unknown> = root :: any
+			state._EXTREMELY_DANGEROUS_usedAsValue = oldValues[index]
+		end
+		local error: Types.Error = err :: any
+		External.logErrorNonFatal("forEachCycle", error)
+	end
 	return false
 end
 
@@ -430,7 +466,7 @@ local function ForEach<K, VI, VO, I, S>(
 		-- Anything that still pulls the reconciler then pulls nothing.
 		table.clear(reconciler.dependencySet)
 		for _, child in reconciler._children do
-			cleanupChild(child)
+			cleanupChildren(child)
 		end
 	end
 	reconciler.oldestTask = destroyReconciler

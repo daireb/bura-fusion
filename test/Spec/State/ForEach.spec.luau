@@ -25,6 +25,26 @@ local function byUid(_, record)
 	return record.uid
 end
 
+-- Collects the IDs of the messages logged through one External function
+-- while the callback runs, and restores it even if the callback throws.
+local function captureLogs(
+	name: string,
+	callback: () -> ()
+): {string}
+	local logged = {}
+	local external = External :: any
+	local original = external[name]
+	external[name] = function(messageID)
+		table.insert(logged, messageID)
+	end
+	local ok, err = pcall(callback)
+	external[name] = original
+	if not ok then
+		error(err, 0)
+	end
+	return logged
+end
+
 return function()
 	local it = getfenv().it
 
@@ -350,6 +370,38 @@ return function()
 		doCleanup(scope)
 	end)
 
+	it("logs a bad input or a failing cleanup without breaking its input", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local data = Value(scope, {"a", "b", "c"} :: any)
+		local cleanups = 0
+		local cells = ForEach(scope, data, byItem, function(_, scope, _, _, id)
+			table.insert(scope, function()
+				cleanups += 1
+				if id == "a" then
+					error("cleanup failed")
+				end
+			end)
+			return id
+		end)
+		peek(cells)
+		local errors = captureLogs("logErrorNonFatal", function()
+			-- a's cleanup errors, and b is still cleaned up.
+			data:set({"c"})
+			-- As a computed might return before its data loads.
+			data:set(nil)
+		end)
+		expect(#errors).to.equal(2)
+		expect(errors[1]).to.equal("callbackError")
+		expect(errors[2]).to.equal("forEachInputNotTable")
+		expect(cleanups).to.equal(3)
+		expect(next(peek(cells))).to.equal(nil)
+		data:set({"d"})
+		expect(peek(cells)[1]).to.equal("d")
+		doCleanup(scope)
+	end)
+
 	it("closes holes in an array and keeps other keys where they are", function()
 		local expect = getfenv().expect
 
@@ -461,6 +513,58 @@ return function()
 		expect(out[1]).to.equal("b")
 		expect(#cleaned).to.equal(1)
 		expect(cleaned[1]).to.equal("a")
+		doCleanup(scope)
+	end)
+
+	it("keeps its input working when an item's observer writes its own item through it", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local data = Value(scope, {{id = 1, done = false}, {id = 2, done = false}, {id = 3, done = false}})
+		local items, labels = {}, {}
+		local cells = ForEach(scope, data, byKey, function(_, scope, _, item, slot)
+			items[slot] = item
+			labels[slot] = Computed(scope, function(use)
+				return use(item).id
+			end)
+			-- Removing its own entry moves the next item into this slot, which
+			-- writes the item this observer is reacting to: a cycle.
+			Observer(scope, item):onChange(function()
+				local record = peek(item)
+				if record.done then
+					local remaining = {}
+					for _, other in peek(data) do
+						if other ~= record then
+							table.insert(remaining, other)
+						end
+					end
+					data:set(remaining)
+				end
+			end)
+			return labels[slot]
+		end)
+		-- Younger than the list's internal writer, older than its children.
+		local fires = 0
+		Observer(scope, data):onChange(function()
+			fires += 1
+		end)
+		peek(cells)
+		Observer(scope, cells)
+		local errors = captureLogs("logErrorNonFatal", function()
+			data:set({{id = 1, done = true}, {id = 2, done = false}, {id = 3, done = false}})
+		end)
+		expect(#errors).to.equal(1)
+		expect(errors[1]).to.equal("forEachCycle")
+		expect(#peek(cells)).to.equal(2)
+		-- The states keep their old values until the input changes again.
+		expect(peek(items[1]).id).to.equal(1)
+		local records = table.clone(peek(data))
+		table.insert(records, {id = 4, done = false})
+		data:set(records)
+		expect(peek(items[1]).id).to.equal(2)
+		expect(peek(labels[1])).to.equal(2)
+		expect(peek(labels[2])).to.equal(3)
+		expect(fires).to.equal(3)
 		doCleanup(scope)
 	end)
 
