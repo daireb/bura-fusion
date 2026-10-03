@@ -101,6 +101,12 @@ end
 function class._evaluate(
 	self: Self
 ): ()
+	-- A destroyed observer can still be queued in the change that destroyed
+	-- it, for example when an older observer re-runs the computed that owned
+	-- it. Running it would call back into torn-down code and subscribe it again.
+	if self.scope == nil then
+		return false
+	end
 	if self._watchingGraph ~= nil then
 		depend(self, self._watchingGraph)
 	end
