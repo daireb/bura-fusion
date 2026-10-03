@@ -137,6 +137,11 @@ export type ForValuesConstructor =  <K, VI, VO, S>(
 	inputTable: UsedAs<{[K]: VI}>,
 	processor: (Use, S, value: VI) -> VO
 ) -> For<K, VO>
+export type ForValueStatesConstructor =  <K, VI, VO, S>(
+	scope: S & Scope<unknown>,
+	inputTable: UsedAs<{[K]: VI}>,
+	processor: (Use, S, key: K, value: StateObject<VI>) -> VO?
+) -> For<K, VO>
 
 -- An object which can listen for updates on another state object.
 export type Observer = GraphObject & {
@@ -259,6 +264,7 @@ export type Fusion = {
 	ForPairs: ForPairsConstructor,
 	ForKeys: ForKeysConstructor,
 	ForValues: ForValuesConstructor,
+	ForValueStates: ForValueStatesConstructor,
 	Observer: ObserverConstructor,
 
 	Tween: TweenConstructor,
