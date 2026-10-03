@@ -59,6 +59,10 @@ local function Observer(
 		for dependency in pairs(self.dependencySet) do
 			dependency.dependentSet[self] = nil
 		end
+		-- A change that already queued this observer would otherwise pull
+		-- what it watched, which may be destroyed too. A destroyed For object
+		-- pulled that way reconciles and subscribes to its input again.
+		table.clear(self.dependencySet)
 	end
 	self.oldestTask = destroy
 	nicknames[self.oldestTask] = "Observer"
@@ -101,10 +105,21 @@ end
 function class._evaluate(
 	self: Self
 ): ()
+	-- A destroyed observer can still be queued in the change that destroyed
+	-- it, for example when an older observer re-runs the computed or removes
+	-- the list entry that owned it. Running it would call back into torn-down
+	-- code and subscribe it again.
+	if self.scope == nil then
+		return false
+	end
 	if self._watchingGraph ~= nil then
 		depend(self, self._watchingGraph)
 	end
 	for _, callback in self._changeListeners do
+		-- One of its own listeners may destroy it.
+		if self.scope == nil then
+			break
+		end
 		External.doTaskImmediate(callback)
 	end
 	return true

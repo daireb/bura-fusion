@@ -206,6 +206,11 @@ end
 function class._evaluate<T>(
 	self: Self<T>
 ): boolean
+	-- A destroyed animation can still be queued in the change that destroyed
+	-- it. Evaluating it would subscribe it to its stopwatch again.
+	if self.scope == nil then
+		return false
+	end
 	local goal = castToState(self._goal)
 	-- Allow non-state goals to pass through transparently.
 	if goal == nil then
