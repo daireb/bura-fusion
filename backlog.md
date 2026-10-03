@@ -29,3 +29,9 @@ Acceptance: each object is listed and walked once per change, eager objects stil
 `Graph/evaluate.luau` recomputes a target when a dependency's `lastChange` is newer than the target's, and a target's `lastChange` only moves when it meaningfully changes. So a computed that once recomputed to an equal value after a real input change recomputes again on every later invalidation. In an earlier Lune model of the grid (28 cells of 40 bound values) these grew from 0 to 104 to 444 recomputes per scroll frame, taking the frame from 3.6 to 6.9 ms. Upstream accepted a fix in dphfox/Fusion#398 and reverted it in #420 because it broke property tests. Per-edge change stamps, as Preact and Vue keep per link, kept the model at 0 and gave the same Lune spec results as stock, but why the upstream fix broke the property tests is not understood.
 
 Acceptance: explain the #420 revert, stop a computed that recomputed to an equal value from recomputing until a dependency changes, pass the full suite in Studio, and compare recomputes per frame in a scroll-heavy UI before and after.
+
+## Identity-keyed value states
+
+`ForValueStates` keys each child by its key, so a child's own state follows the key. Lists of items with their own identity stay on `ForValues` over ids or `ForPairs` keyed by id, where a child that needs its position has to look it up from shared state, so a reorder reaches every child. The dual would key children by item and pass the position as state, as Solid's `<For>` passes a reactive index, so a reorder updates only the children that moved. Deferred until a list needs it.
+
+Acceptance: a child follows its item across reorders without rebuilding, receives its position as state that changes only when the item moves, and is cleaned up when its item leaves; existing For objects are unchanged; specs mirror the `ForValueStates` ones.
