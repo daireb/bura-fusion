@@ -30,17 +30,18 @@ Acceptance: each object is listed and walked once per change, eager objects stil
 
 Acceptance: explain the #420 revert, stop a computed that recomputed to an equal value from recomputing until a dependency changes, pass the full suite in Studio, and compare recomputes per frame in a scroll-heavy UI before and after.
 
-## Legacy For objects over ForEach
+## ForKeys, ForValues and ForPairs over ForEach
 
-`ForKeys`, `ForValues` and `ForPairs` could become thin wrappers over `ForEach`, as upstream's maintainer suggested keeping the existing objects as sugar over a general one. They differ today in four ways:
+`ForKeys`, `ForValues` and `ForPairs` could become thin wrappers over `ForEach`, as upstream's maintainer suggested keeping the existing objects as sugar over a general one. They differ today in five ways:
 - **Laziness.** `ForEach` reconciles its input on every change even when nothing reads it. Every existing list would turn eager: input computeds would run while unmounted, and a destroyed input would error at construction.
 - **Output keys.** `ForKeys` and `ForPairs` return keys from the processor and log collisions. `ForEach` has no output-key stage, and a processor that returned `use(key)` would run again on every move.
 - **Rebuild timing.** `ForPairs` rebuilds inside the For object's own evaluation. `ForEach` writes states from an eager object, which changes the order older observers see, and warns on the top-level `use` a wrapper would need.
 - **Recycling.** The shared disassembly hands leftover sub-objects to new pairs; `ForEach` never hands a child to another identity.
+- **Matching.** `ForValues` matches values with `==`, so `__eq` and Roblox datatypes such as `Color3` match by value; `ForEach` matches identities as raw table keys, so those match by reference. Two frozen records swapped for fresh copies that are equal by `__eq`, in the other order, build 2 children in all in `ForValues` and 4 in `ForEach` by item.
 
-`ForEach` by item matched `ForValues` on outputs and processor runs over 5,000 random steps, which says nothing about `ForKeys` or `ForPairs`.
+`ForEach` by item matched `ForValues` on outputs and processor runs over 5,000 random steps of arrays of string ids without holes or errors, which says nothing about holes, `__eq`, `ForKeys` or `ForPairs`.
 
-Acceptance: an output-key stage designed first; a randomized differential agrees with the current objects on outputs, processor runs, cleanups and consumer fires across arrays, maps, repeated values, holes and errors; the laziness difference is resolved or accepted; and the existing For specs and the full suite in Studio pass.
+Acceptance: an output-key stage designed first; a randomized differential agrees with the current objects on outputs, processor runs, cleanups and consumer fires across arrays, maps, repeated values, holes and errors; the laziness and matching differences are resolved or accepted; and the existing For specs and the full suite in Studio pass.
 
 ## Sparse number keys in For
 
@@ -50,6 +51,6 @@ Acceptance: number keys that are not an array keep their places, or closing hole
 
 ## Cross-scope lifetime checks
 
-Reading a `ForEach` key or item state from an object the processor built crosses scopes: the state lives in the child's scope and the reader in the build scope. `Memory/whichLivesLonger` then scans both scopes and allocates three tables per read. In Lune, with every item of 2,000 changed, the `ForEach` prototype by key took 37-40 ms and 1.7 MB per update against 30-32 ms and 1.3 MB for a value state kept in the build scope. Reusing scratch tables would speed up every cross-scope read. Deferred until a profile of the game shows it matters.
+Reading a `ForEach` key or item state from an object the processor built crosses scopes: the state lives in the child's scope and the reader in the build scope. `Memory/whichLivesLonger` then scans both scopes and allocates three tables per read. In Lune, with every item of 2,000 changed and one observed reader per child, `ForEach` by key took 26-29 ms (the medians of five runs) and 1.7 MB per update, against 23-25 ms and 1.2 MB for `ForValueStates` from the closed PR #3, whose value state lives in the build scope. Reusing scratch tables would speed up every cross-scope read. Deferred until a profile of the game shows it matters.
 
 Acceptance: the same lifetime warnings as now, and fewer allocations per cross-scope read, measured.

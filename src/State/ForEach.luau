@@ -9,12 +9,13 @@ local task = nil -- Disable usage of Roblox's task scheduler
 
 	The identify callback names each item's identity: its key, the item
 	itself, or a field such as an id. The processor runs once per identity and
-	receives the key and the item as read-only state objects, followed by the
-	identity itself. When an item changes or moves to another key, those state
-	objects are updated and the child stays, where ForPairs and ForValues would
-	run the processor again. Items with the same identity are matched to
-	children in iteration order. Keys pass through, and a nil output leaves a
-	hole; when the input is an array, holes close up in order.
+	receives the key and the item as state objects, typed as read-only,
+	followed by the identity itself. When an item changes or moves to another
+	key, those state objects are updated and the child stays, where ForPairs
+	would run the processor again for either and ForValues for a changed item.
+	Items with the same identity are matched to children in iteration order.
+	Keys pass through, and a nil output leaves a hole; when the input is an
+	array, holes close up in order.
 
 	The processor runs inside a computed, as in every For object, so any state
 	it uses at the top level runs it again. A child built again because it used

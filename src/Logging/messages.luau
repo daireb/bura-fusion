@@ -18,7 +18,7 @@ return {
 	destroyedTwice = "`doCleanup()` was given something that it is already cleaning up. Unclear how to proceed.",
 	destructorRedundant = "%s destructors no longer do anything. If you wish to run code on destroy, `table.insert` a function into the `scope` argument. See discussion #292 on GitHub for advice.",
 	forEachCycle = "A `ForEach` could not update its key and item states, so they keep their old values until its input changes again. Something that reads them, such as an observer, changed the input while reacting to them, which is a cyclic dependency.",
-	forEachExtraOutput = "A `ForEach` processor returned more than one value for key '%s'. `ForEach` keeps the input keys, so the processor returns only the output, and the other values were ignored.",
+	forEachExtraOutput = "A `ForEach` processor returned more than one value for key '%s'. Only the first is used as the output, so a processor carried over from `ForPairs` should return only its output, not its key first.",
 	forEachIdentifyMissing = "`ForEach` needs a function that returns each item's identity, given before the processor: `myScope:ForEach(inputTable, function(key, item) return item.id end, function(use, scope, key, item, identity) ... end)`.",
 	forEachIdentityMissing = "`ForEach` left out the item at key '%s' because its identity was nil or NaN. Return a non-nil identity, such as an id.",
 	forEachInputNotTable = "The input of a `ForEach` was a %s rather than a table, so the list is empty until it is a table again.",
