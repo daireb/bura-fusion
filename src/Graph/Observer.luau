@@ -59,6 +59,10 @@ local function Observer(
 		for dependency in pairs(self.dependencySet) do
 			dependency.dependentSet[self] = nil
 		end
+		-- A change that already queued this observer would otherwise pull
+		-- what it watched, which may be destroyed too. A destroyed For object
+		-- pulled that way reconciles and subscribes to its input again.
+		table.clear(self.dependencySet)
 	end
 	self.oldestTask = destroy
 	nicknames[self.oldestTask] = "Observer"

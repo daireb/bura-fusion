@@ -8,6 +8,7 @@ local Fusion = ReplicatedStorage.Fusion
 local Observer = require(Fusion.Graph.Observer)
 local Value = require(Fusion.State.Value)
 local Computed = require(Fusion.State.Computed)
+local ForValues = require(Fusion.State.ForValues)
 local peek = require(Fusion.State.peek)
 local innerScope = require(Fusion.Memory.innerScope)
 local doCleanup = require(Fusion.Memory.doCleanup)
@@ -95,6 +96,31 @@ return function()
 		end
 		-- The computed and its current inner observer.
 		expect(dependents).to.equal(2)
+
+		doCleanup(scope)
+	end)
+
+	it("leaves a destroyed list it watched unsubscribed", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local source = Value(scope, {1, 2})
+		local inner = innerScope(scope)
+		-- Older, so it runs first in the change and destroys the inner scope
+		-- after the inner observer was already queued.
+		Observer(scope, source):onChange(function()
+			doCleanup(inner)
+		end)
+		Observer(inner, ForValues(inner, source, function(_, _, value)
+			return value
+		end))
+		source:set({3, 4})
+		local dependents = 0
+		for _ in source.dependentSet do
+			dependents += 1
+		end
+		-- Only the older observer.
+		expect(dependents).to.equal(1)
 
 		doCleanup(scope)
 	end)
