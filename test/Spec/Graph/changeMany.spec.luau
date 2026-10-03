@@ -8,6 +8,7 @@ local Fusion = ReplicatedStorage.Fusion
 local changeMany = require(Fusion.Graph.changeMany)
 local Value = require(Fusion.State.Value)
 local Computed = require(Fusion.State.Computed)
+local ForValues = require(Fusion.State.ForValues)
 local Observer = require(Fusion.Graph.Observer)
 local peek = require(Fusion.State.peek)
 local doCleanup = require(Fusion.Memory.doCleanup)
@@ -104,6 +105,59 @@ return function()
 		expect(order[2]).to.equal("b1")
 		expect(order[3]).to.equal("a2")
 		expect(order[4]).to.equal("b2")
+
+		doCleanup(scope)
+	end)
+
+	it("leaves a change from an observer's callback to run its own pass", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local a = Value(scope, 1)
+		local b = Value(scope, 10)
+		local bChanged = false
+		local changedBeforeSetReturned = nil
+		Observer(scope, b):onChange(function()
+			bChanged = true
+		end)
+		Observer(scope, a):onChange(function()
+			b:set(20)
+			changedBeforeSetReturned = bChanged
+		end)
+
+		a:set(2)
+
+		expect(changedBeforeSetReturned).to.equal(true)
+
+		doCleanup(scope)
+	end)
+
+	it("joins the outer pass after a change from an observer's callback errors", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local a = Value(scope, 1)
+		local b = Value(scope, 10)
+		local input = Value(scope, {} :: any)
+		-- Errors when evaluated while its input is not a table.
+		Observer(scope, ForValues(scope, input, function(_, _, value)
+			return value
+		end))
+		local bChanged = false
+		Observer(scope, b):onChange(function()
+			bChanged = true
+		end)
+		Observer(scope, a):onChange(function()
+			pcall(function()
+				input:set(5)
+			end)
+			b._EXTREMELY_DANGEROUS_usedAsValue = 20
+			changeMany({b})
+		end)
+
+		a:set(2)
+
+		expect(bChanged).to.equal(true)
 
 		doCleanup(scope)
 	end)
