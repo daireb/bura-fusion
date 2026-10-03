@@ -261,6 +261,28 @@ return function()
 		doCleanup(scope)
 	end)
 
+	it("warns once when a processor returns more than its output", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local warnings = {}
+		local logWarn = External.logWarn
+		External.logWarn = function(messageID, ...)
+			table.insert(warnings, messageID)
+		end
+		local data = Value(scope, {"a", "b"})
+		-- Carried over from a ForPairs processor, which returns its key first.
+		local cells = ForEach(scope, data, byItem, function(_, _, key, _, id)
+			return peek(key), id
+		end)
+		local out = peek(cells)
+		External.logWarn = logWarn
+		expect(out[2]).to.equal(2)
+		expect(#warnings).to.equal(1)
+		expect(warnings[1]).to.equal("forEachExtraOutput")
+		doCleanup(scope)
+	end)
+
 	it("leaves a hole for a failing processor and retries it when its key or item changes", function()
 		local expect = getfenv().expect
 
