@@ -143,6 +143,37 @@ return function()
 		doCleanup(scope)
 	end)
 
+	it("updates only the keys whose values changed", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local data = Value(scope, {{}, {}})
+		local runs = {0, 0}
+		local cells = ForValueStates(scope, data, function(_, scope, key, value)
+			return Computed(scope, function(use)
+				use(value)
+				runs[key] += 1
+				return key
+			end)
+		end)
+		local function readAll()
+			for _, cell in peek(cells) do
+				peek(cell)
+			end
+		end
+		readAll()
+		-- Unfrozen tables never count as similar, so rewriting key 1's value
+		-- state again would run its child again.
+		local first = {}
+		data:set({first, peek(data)[2]})
+		readAll()
+		data:set({first, {}})
+		readAll()
+		expect(runs[1]).to.equal(2)
+		expect(runs[2]).to.equal(2)
+		doCleanup(scope)
+	end)
+
 	it("does nothing when equal contents are set again", function()
 		local expect = getfenv().expect
 
