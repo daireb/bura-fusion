@@ -44,6 +44,17 @@ local function runPass(): ()
 	end
 end
 
+-- Adds the stack an error was raised at, which rethrowing it loses, unless it
+-- already carries one.
+local function addTrace(
+	err: unknown
+): unknown
+	if typeof(err) == "string" and string.find(err, "---- Stack trace ----", 1, true) == nil then
+		return `{err} \n---- Stack trace ----\n{debug.traceback(nil, 2)}`
+	end
+	return err
+end
+
 local function propagate(
 	searchInNow: {Types.GraphObject},
 	joinRunningPass: boolean?
@@ -97,8 +108,10 @@ local function propagate(
 	table.sort(eagerList, byCreation)
 	runningPass, runningIndex = eagerList, 0
 	-- Restored even when an eager object errors, so that no later change joins
-	-- a pass that has stopped.
-	local ok: boolean, err: unknown = pcall(runPass)
+	-- a pass that has stopped. A change made from an observer's callback runs
+	-- in the callback's own thread, so its error stops only that thread and
+	-- the outer pass carries on.
+	local ok: boolean, err: unknown = xpcall(runPass, addTrace)
 	runningPass, runningIndex = outerPass, outerIndex
 	if not ok then
 		error(err, 0)
