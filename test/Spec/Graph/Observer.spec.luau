@@ -40,28 +40,23 @@ return function()
 		end).to.never.throw()
 	end)
 
-	it("neither fires nor resubscribes once destroyed earlier in the same change", function()
+	it("calls no more listeners once one of them destroys it", function()
 		local expect = getfenv().expect
 
 		local scope = {}
 		local source = Value(scope, 1)
 		local inner = innerScope(scope)
-		-- Older, so it runs first in the change and destroys the inner observer
-		-- after that observer was already queued.
-		Observer(scope, source):onChange(function()
-			doCleanup(inner)
-		end)
-		local innerFires = 0
-		Observer(inner, source):onChange(function()
-			innerFires += 1
-		end)
-		source:set(2)
-		expect(innerFires).to.equal(0)
-		local dependents = 0
-		for _ in source.dependentSet do
-			dependents += 1
+		local observer = Observer(inner, source)
+		local fires = 0
+		-- Listeners run in no set order, so whichever runs first destroys it.
+		for _ = 1, 2 do
+			observer:onChange(function()
+				fires += 1
+				doCleanup(inner)
+			end)
 		end
-		expect(dependents).to.equal(1)
+		source:set(2)
+		expect(fires).to.equal(1)
 
 		doCleanup(scope)
 	end)

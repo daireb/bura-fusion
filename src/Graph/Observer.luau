@@ -102,8 +102,9 @@ function class._evaluate(
 	self: Self
 ): ()
 	-- A destroyed observer can still be queued in the change that destroyed
-	-- it, for example when an older observer re-runs the computed that owned
-	-- it. Running it would call back into torn-down code and subscribe it again.
+	-- it, for example when an older observer re-runs the computed or removes
+	-- the list entry that owned it. Running it would call back into torn-down
+	-- code and subscribe it again.
 	if self.scope == nil then
 		return false
 	end
@@ -111,6 +112,10 @@ function class._evaluate(
 		depend(self, self._watchingGraph)
 	end
 	for _, callback in self._changeListeners do
+		-- One of its own listeners may destroy it.
+		if self.scope == nil then
+			break
+		end
 		External.doTaskImmediate(callback)
 	end
 	return true
