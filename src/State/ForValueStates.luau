@@ -105,8 +105,11 @@ local function SubObject<K, VI, VO, S>(
 	self._list = list
 	self._valueState = nil
 	self._failed = false
-	self._retry = nil
 	self._keyState = Value(scope, initialKey)
+	-- The distributor bumps this when the value of a failed build changes, to
+	-- run the processor again. Created before the computed that uses it, so
+	-- that it outlives the computed.
+	self._retry = Value(scope, 0)
 	self._outputValueState = Computed(scope, function(use, buildScope): VO?
 		local key = use(self._keyState)
 		-- Owned by this build, so a rebuild destroys it with the old child.
@@ -126,10 +129,6 @@ local function SubObject<K, VI, VO, S>(
 		External.logErrorNonFatal("callbackError", error)
 		self._valueState = nil
 		self._failed = true
-		-- The distributor bumps this when the value changes, to retry.
-		if self._retry == nil then
-			self._retry = Value(scope, 0)
-		end
 		use(self._retry)
 		doCleanup(buildScope)
 		table.clear(buildScope)
@@ -172,7 +171,7 @@ function distributorClass._evaluate(
 				valueState._EXTREMELY_DANGEROUS_usedAsValue = subObject.inputValue
 				table.insert(roots, valueState)
 			end
-		elseif subObject._failed and subObject._retry ~= nil then
+		elseif subObject._failed then
 			subObject._retry._EXTREMELY_DANGEROUS_usedAsValue += 1
 			table.insert(roots, subObject._retry)
 		end

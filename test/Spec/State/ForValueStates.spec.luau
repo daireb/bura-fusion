@@ -172,6 +172,11 @@ return function()
 		local expect = getfenv().expect
 
 		local scope = {}
+		local warnings = {}
+		local logWarn = External.logWarn
+		External.logWarn = function(messageID, ...)
+			table.insert(warnings, messageID)
+		end
 		local data = Value(scope, {a = 1, b = 2} :: {[string]: number})
 		local cells = ForValueStates(scope, data, function(_, _, key, value)
 			if key == "a" and peek(value) == 1 then
@@ -179,13 +184,16 @@ return function()
 			end
 			return key
 		end)
-		local out = peek(cells)
-		expect(out.a).to.equal(nil)
-		expect(out.b).to.equal("b")
+		local before = table.clone(peek(cells))
 		data:set({a = 2, b = 2})
-		out = peek(cells)
-		expect(out.a).to.equal("a")
-		expect(out.b).to.equal("b")
+		local after = peek(cells)
+		External.logWarn = logWarn
+		expect(before.a).to.equal(nil)
+		expect(before.b).to.equal("b")
+		expect(after.a).to.equal("a")
+		expect(after.b).to.equal("b")
+		-- The failed build logs its error and nothing else.
+		expect(#warnings).to.equal(0)
 		doCleanup(scope)
 	end)
 
