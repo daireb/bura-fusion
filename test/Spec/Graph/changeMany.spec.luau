@@ -42,4 +42,30 @@ return function()
 
 		doCleanup(scope)
 	end)
+
+	it("runs the eager dependents of every target in order of creation", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local a = Value(scope, 1)
+		local b = Value(scope, 10)
+		local order = {}
+		-- Created in the reverse of the target order.
+		Observer(scope, b):onChange(function()
+			table.insert(order, "b")
+		end)
+		Observer(scope, a):onChange(function()
+			table.insert(order, "a")
+		end)
+
+		a._EXTREMELY_DANGEROUS_usedAsValue = 2
+		b._EXTREMELY_DANGEROUS_usedAsValue = 20
+		changeMany({a, b})
+
+		expect(#order).to.equal(2)
+		expect(order[1]).to.equal("b")
+		expect(order[2]).to.equal("a")
+
+		doCleanup(scope)
+	end)
 end
