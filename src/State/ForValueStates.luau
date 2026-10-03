@@ -222,6 +222,10 @@ local function ForValueStates<K, VI, VO, S>(
 		for dependency in pairs(distributor.dependencySet) do
 			dependency.dependentSet[distributor] = nil
 		end
+		-- A change that already queued the distributor would otherwise pull
+		-- the destroyed disassembly, which would reconcile and subscribe to
+		-- the input again.
+		table.clear(distributor.dependencySet)
 	end
 	distributor.oldestTask = destroy
 	nicknames[distributor.oldestTask] = "ForValueStates (internal distributor)"

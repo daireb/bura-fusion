@@ -316,4 +316,28 @@ return function()
 		expect(dependents).to.equal(2)
 		doCleanup(scope)
 	end)
+
+	it("releases its input when destroyed during a change of that input", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local data = Value(scope, {1, 2})
+		local listScope = {}
+		-- Older than the list, so it destroys the list after the list's own
+		-- update was queued in the same change.
+		Observer(scope, data):onChange(function()
+			doCleanup(listScope)
+		end)
+		ForValueStates(listScope, data, function(_, _, key, _)
+			return key
+		end)
+		data:set({3, 4})
+		local dependents = 0
+		for _ in data.dependentSet do
+			dependents += 1
+		end
+		-- Only the older observer.
+		expect(dependents).to.equal(1)
+		doCleanup(scope)
+	end)
 end
