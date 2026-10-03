@@ -68,4 +68,43 @@ return function()
 
 		doCleanup(scope)
 	end)
+
+	it("joins the pass that is running, in order of creation", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local a = Value(scope, 1)
+		local b = Value(scope, 10)
+		local order = {}
+		local observers = {Observer(scope, a), Observer(scope, b), Observer(scope, a), Observer(scope, b)}
+		-- Distinct creation times, even if the clock did not move between them.
+		for index, observer in observers do
+			observer.createdAt = index
+		end
+		-- Changes b while the pass for a is running.
+		observers[1]:onChange(function()
+			table.insert(order, "a1")
+			b._EXTREMELY_DANGEROUS_usedAsValue = 20
+			changeMany({b})
+		end)
+		observers[2]:onChange(function()
+			table.insert(order, "b1")
+		end)
+		observers[3]:onChange(function()
+			table.insert(order, "a2")
+		end)
+		observers[4]:onChange(function()
+			table.insert(order, "b2")
+		end)
+
+		a:set(2)
+
+		expect(#order).to.equal(4)
+		expect(order[1]).to.equal("a1")
+		expect(order[2]).to.equal("b1")
+		expect(order[3]).to.equal("a2")
+		expect(order[4]).to.equal("b2")
+
+		doCleanup(scope)
+	end)
 end

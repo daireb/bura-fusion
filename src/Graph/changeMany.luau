@@ -10,6 +10,12 @@ local task = nil -- Disable usage of Roblox's task scheduler
 	order of creation. So no eager object sees some targets changed and others
 	not, and eager objects keep their creation order across targets.
 
+	Called while a pass is evaluating eager objects, such as from an eager
+	object's own evaluation, it joins that pass instead of running one of its
+	own. The eager dependents then run when the pass reaches them, in creation
+	order among the objects it has yet to evaluate, so an older eager object
+	still runs first and the caller is no longer busy when they run.
+
 	The targets should be distinct, independent sources. A value must already
 	hold its new value, and should differ from its old one as `Value:set`
 	ensures, because evaluating a value always counts as a meaningful change.
@@ -38,7 +44,7 @@ local function changeMany(
 		end
 	end
 	if changed[1] ~= nil then
-		propagate(changed)
+		propagate(changed, true)
 	end
 end
 
