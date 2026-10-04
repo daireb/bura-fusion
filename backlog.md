@@ -17,3 +17,15 @@ Acceptance: a For object destroyed during a change of its input neither reconcil
 `Animation/ExternalTime.luau` calls `change` on each timer while iterating `allTimers`, and destroying a timer removes it from that array. When an animation's observer destroys an animation registered earlier during the step, the array shifts and the next live animation skips that frame. Stock Fusion has the same loop.
 
 Acceptance: destroying any animation during an update step leaves every other live animation updated that frame, pinned by a spec.
+
+## Duplicate walking
+
+The invalidation walk in `Graph/propagate.luau` appends a dependent once for every path that reaches it and walks on from it each time, so diamonds compound. In a Lune model of a pooled inventory grid (28 cells of 61 graph objects), one scroll frame marked 3419 entries for 1319 distinct objects (2.6x) and queued 1344 eager entries for 476. Marking each object invalid as the walk reaches it cut that to 1319 and 476 and the frame from 3.2 to 1.8 ms. That changes the walk every app relies on and does not remove it, so it is deferred. Upstream has the same code.
+
+Acceptance: each object is listed and walked once per change, eager objects still run once each in creation order, the `change` property specs and a randomized differential against the current walk agree, and a diamond-heavy graph is measured before and after.
+
+## Sticky recompute
+
+`Graph/evaluate.luau` recomputes a target when a dependency's `lastChange` is newer than the target's, and a target's `lastChange` only moves when it meaningfully changes. So a computed that once recomputed to an equal value after a real input change recomputes again on every later invalidation. In an earlier Lune model of the grid (28 cells of 40 bound values) these grew from 0 to 104 to 444 recomputes per scroll frame, taking the frame from 3.6 to 6.9 ms. Upstream accepted a fix in dphfox/Fusion#398 and reverted it in #420 because it broke property tests. Per-edge change stamps, as Preact and Vue keep per link, kept the model at 0 and gave the same Lune spec results as stock, but why the upstream fix broke the property tests is not understood.
+
+Acceptance: explain the #420 revert, stop a computed that recomputed to an equal value from recomputing until a dependency changes, pass the full suite in Studio, and compare recomputes per frame in a scroll-heavy UI before and after.
