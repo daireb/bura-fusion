@@ -8,6 +8,8 @@ local Fusion = ReplicatedStorage.Fusion
 local Observer = require(Fusion.Graph.Observer)
 local Value = require(Fusion.State.Value)
 local Computed = require(Fusion.State.Computed)
+local ForValues = require(Fusion.State.ForValues)
+local peek = require(Fusion.State.peek)
 local innerScope = require(Fusion.Memory.innerScope)
 local doCleanup = require(Fusion.Memory.doCleanup)
 
@@ -37,6 +39,90 @@ return function()
 		expect(function()
 			doCleanup(observer)
 		end).to.never.throw()
+	end)
+
+	it("calls no more listeners once one of them destroys it", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local source = Value(scope, 1)
+		local inner = innerScope(scope)
+		local observer = Observer(inner, source)
+		local fires = 0
+		-- Listeners run in no set order, so whichever runs first destroys it.
+		for _ = 1, 2 do
+			observer:onChange(function()
+				fires += 1
+				doCleanup(inner)
+			end)
+		end
+		source:set(2)
+		expect(fires).to.equal(1)
+
+		doCleanup(scope)
+	end)
+
+	it("neither fires nor resubscribes once its computed re-runs", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local source = Value(scope, 0)
+		local deadFires = 0
+		local computed = Computed(scope, function(use, scope)
+			local alive = true
+			table.insert(scope, function()
+				alive = false
+			end)
+			Observer(scope, source):onChange(function()
+				if not alive then
+					deadFires += 1
+				end
+			end)
+			return use(source)
+		end)
+		-- The order `[Children]` binds a computed child in: read it, then
+		-- observe it. From the second change on, the consumer is older than
+		-- the inner observer, so it re-runs the computed while that observer
+		-- is still queued.
+		peek(computed)
+		Observer(scope, computed)
+		for value = 1, 10 do
+			source:set(value)
+		end
+		expect(deadFires).to.equal(0)
+		local dependents = 0
+		for _ in source.dependentSet do
+			dependents += 1
+		end
+		-- The computed and its current inner observer.
+		expect(dependents).to.equal(2)
+
+		doCleanup(scope)
+	end)
+
+	it("leaves a destroyed list it watched unsubscribed", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local source = Value(scope, {1, 2})
+		local inner = innerScope(scope)
+		-- Older, so it runs first in the change and destroys the inner scope
+		-- after the inner observer was already queued.
+		Observer(scope, source):onChange(function()
+			doCleanup(inner)
+		end)
+		Observer(inner, ForValues(inner, source, function(_, _, value)
+			return value
+		end))
+		source:set({3, 4})
+		local dependents = 0
+		for _ in source.dependentSet do
+			dependents += 1
+		end
+		-- Only the older observer.
+		expect(dependents).to.equal(1)
+
+		doCleanup(scope)
 	end)
 
 	it("fires once after change", function()
