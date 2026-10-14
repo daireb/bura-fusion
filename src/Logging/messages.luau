@@ -28,6 +28,7 @@ return {
 	invalidAttributeChangeHandler = "The change handler for the '%s' attribute must be a function.",
 	invalidAttributeOutType = "[AttributeOut] properties must be given Value objects.",
 	invalidChangeHandler = "The change handler for the '%s' property must be a function.",
+	invalidEnvironment = "'%s' isn't an environment. Pass \"development\" or \"live\", or nil to use the detected one.",
 	invalidEventHandler = "The handler for the '%s' event must be a function.",
 	invalidOutProperty = "The %s class doesn't have a property called '%s'.",
 	invalidOutType = "[Out] properties must be given Value objects.",

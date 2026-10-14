@@ -54,7 +54,9 @@ local function whichLivesLonger(
 	scopeB: Types.Scope<unknown>,
 	b: unknown
 ): "definitely-a" | "definitely-b" | "unsure"
-	if External.isTimeCritical() then
+	-- The scan only feeds a warning and its cost grows with the size of the
+	-- scopes, so it runs only in development.
+	if External.isTimeCritical() or External.isLive() then
 		return "unsure"
 	elseif scopeA == scopeB then
 		local scopeA: {unknown} = scopeA

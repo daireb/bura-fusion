@@ -16,6 +16,7 @@ export type UsedAs<T> = Types.UsedAs<T>
 export type Child = Types.Child
 export type Computed<T> = Types.Computed<T>
 export type Contextual<T> = Types.Contextual<T>
+export type Environment = Types.Environment
 export type GraphObject = Types.GraphObject
 export type For<KO, VO> = Types.For<KO, VO>
 export type Observer = Types.Observer
@@ -43,6 +44,7 @@ local Fusion: Fusion = table.freeze {
 	version = {major = 0, minor = 3, isRelease = true},
 	Contextual = require(script.Utility.Contextual),
 	Safe = require(script.Utility.Safe),
+	setEnvironment = External.setEnvironment,
 
 	-- Memory
 	cleanup = require(script.Memory.legacyCleanup),
