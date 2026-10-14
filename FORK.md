@@ -10,6 +10,7 @@ Private derivative of [dphfox/Fusion](https://github.com/dphfox/Fusion), based o
 - An observer or tween destroyed during a change no longer runs or subscribes again in that change. A destroyed observer also drops what it watched, so the change no longer pulls it, and an observer calls no more listeners once one of them destroys it. In Fusion 0.3, one queued before an older object destroyed it still runs: the dead callback fires and the object subscribes again, leaking a subscription per change, and pulling a destroyed For object made the list reconcile and subscribe to its input again. This happens whenever an older consumer tears down a scope that holds one, as when `[Children]` re-runs a computed whose scope owns an observer, a bound property or a For object, or a For object removes or rebuilds an entry built after its consumer. Listeners that only ever fired that way, such as an `onChange` inside a computed that `[Children]` re-runs, no longer fire. Springs get the same check for uniformity; a destroyed spring only subscribed again to its own stopwatch, which leaked nothing.
 - `Graph/changeMany` (internal, not exported) changes several graph objects as one change: their dependents are invalidated in one walk, and each eager object runs at most once, in creation order, after all of them have changed. Called while a pass of eager objects is running, as from an eager object's own evaluation, it joins that pass: its eager objects run in creation order among the ones still waiting, and the caller is no longer busy when they run. `change` still runs a pass of its own. `change` and `changeMany` share Fusion's walk, moved unchanged into `Graph/propagate`; only the eager pass changed, so that it can be joined. An error raised during an eager pass is rethrown with the stack it was raised at added to its message, because restoring the outer pass catches it.
 - `ForEach` is a new For object that builds and keeps one child per identity, which the caller chooses, and passes each child its key and item as state objects. See below.
+- Fusion runs in development or live, and live skips the scope scan behind `possiblyOutlives` warnings. Live means a real Roblox server or client outside Studio; `Fusion.setEnvironment` can force either. See below.
 
 There is no new graph, mounting framework, stylesheet cascade, or unified New/Hydrate API.
 
@@ -63,6 +64,21 @@ An item's observer can change the list's input, for example to remove its own en
 This is the fork's first constructor with no upstream origin. It borrows one idea from upstream's open issue `dphfox/Fusion#220`: passing keys and values to processors as state objects. Otherwise it is a keyed list like Solid 2's `For` with a key function, Svelte 5's keyed `each` and Angular's `@for` with `track`. Unlike the issue's proposal, it never hands a child to another identity, treats a top-level `use` of its own states as a mistake, uses its own reconciler rather than the shared disassembly, and has no output keys, so it cannot stand in for `ForKeys` or `ForPairs`.
 
 `ForPairs`, `ForValues` and `ForKeys` are unchanged. Rebuilding them over `ForEach` is recorded in backlog.md: it would need an output-key stage, would make them reconcile eagerly, and must first pass a randomized differential proving identical behaviour.
+
+## Development and live
+
+Fusion decides once, when it loads, whether it runs in development or live. The Roblox provider reports live only in a real Roblox server or client outside Studio: `game` is an Instance and `RunService:IsStudio()` is false. Studio, tests under Lune (whose mock `game` is not an Instance) and any provider that does not report an environment are development.
+
+Live skips one development-only check: the scope scan in `Memory/whichLivesLonger`, which decides whether something that uses or binds an object may outlive it and warns `possiblyOutlives`. It only ever warns, and it walks the scopes involved, so its cost grows with their size. In a game whose hotbar slots each hold about 540 entries in one scope, skipping it saved about 0.6-0.7 ms a frame of script time in combat. Everything else is the same in both environments: using a destroyed object still errors with `useAfterDestroy`, and cleaned scopes are still poisoned, not pooled, since `isTimeCritical` and the scope pool are unchanged.
+
+`Fusion.setEnvironment(environment)` forces `"development"` or `"live"`, and `nil` returns to the detected environment. It returns the environment now in effect, so `Fusion.setEnvironment(nil)` also reads what was detected. It takes effect from the next check, so it can be flipped mid-session to compare frame times, or set by a test to cover both. Anything else errors with `invalidEnvironment`.
+
+```lua
+Fusion.setEnvironment("live") -- in Studio: time a frame without the scan
+Fusion.setEnvironment(nil) -- back to the detected environment, "development" in Studio
+```
+
+A custom external provider reports its environment as `policies.environment`.
 
 ## Development
 

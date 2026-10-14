@@ -21,6 +21,12 @@ local External = {}
 -- internal behaviour to be more performance friendly.
 local timeCritical = false
 
+-- Live skips development-only checks. The provider detects the environment;
+-- `setEnvironment` can force one.
+local detectedEnvironment: Types.Environment = "development"
+local forcedEnvironment: Types.Environment? = nil
+local live = false
+
 -- Multiplier for running-time safety checks across the Fusion codebase. Used to
 -- stricten tests on infinite loop detection during unit testing.
 External.safetyTimerMultiplier = 1
@@ -44,6 +50,10 @@ function External.setExternalProvider(
 	if newProvider ~= nil then
 		newProvider.startScheduler()
 	end
+	detectedEnvironment = if newProvider ~= nil and newProvider.policies.environment == "live"
+		then "live"
+		else "development"
+	live = (forcedEnvironment or detectedEnvironment) == "live"
 	return oldProvider
 end
 
@@ -52,6 +62,30 @@ end
 ]]
 function External.isTimeCritical(): boolean
 	return timeCritical
+end
+
+--[[
+	Forces the environment, or returns to the provider's detected one when
+	given nil. Takes effect from the next check. Returns the environment now in
+	effect.
+]]
+function External.setEnvironment(
+	environment: Types.Environment?
+): Types.Environment
+	if environment ~= nil and environment ~= "development" and environment ~= "live" then
+		External.logError("invalidEnvironment", nil, tostring(environment))
+	end
+	forcedEnvironment = environment
+	local current: Types.Environment = forcedEnvironment or detectedEnvironment
+	live = current == "live"
+	return current
+end
+
+--[[
+	Returns true if development-only checks should be skipped.
+]]
+function External.isLive(): boolean
+	return live
 end
 
 --[[

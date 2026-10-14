@@ -8,7 +8,8 @@ local External = require(Fusion.External)
 local SpecExternal = {}
 
 SpecExternal.policies = {
-	allowWebLinks = true
+	allowWebLinks = true,
+	environment = "development" :: "development"
 }
 
 local queue = {} :: {thread}

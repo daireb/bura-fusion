@@ -249,10 +249,14 @@ export type Safe = <Success, Fail>(
 	}
 ) -> Success | Fail
 
+-- Whether development-only checks run. See `Fusion.setEnvironment`.
+export type Environment = "development" | "live"
+
 export type Fusion = {
 	version: Version,
 	Contextual: ContextualConstructor,
 	Safe: Safe,
+	setEnvironment: (environment: Environment?) -> Environment,
 
 	doCleanup: (Task) -> (),
 	scoped: ScopedConstructor,
@@ -287,7 +291,9 @@ export type Fusion = {
 
 export type ExternalProvider = {
 	policies: {
-		allowWebLinks: boolean
+		allowWebLinks: boolean,
+		-- Detected once when the provider loads; nil means development.
+		environment: Environment?
 	},
 
 	logErrorNonFatal: (

@@ -10,12 +10,20 @@ local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 
 local Package = script.Parent
+local Types = require(Package.Types)
 local External = require(Package.External)
 
 local RobloxExternal = {}
 
+-- Live only in a real Roblox server or client outside Studio. A mock `game`,
+-- as when tests run under Lune, is not an Instance, so tests keep
+-- development-only checks.
+local environment: Types.Environment =
+	if typeof(game) == "Instance" and not RunService:IsStudio() then "live" else "development"
+
 RobloxExternal.policies = {
-	allowWebLinks = RunService:IsStudio()
+	allowWebLinks = RunService:IsStudio(),
+	environment = environment
 }
 
 --[[
