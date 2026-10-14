@@ -1,5 +1,5 @@
 name = "daireb/bura_fusion"
-version = "0.3.0-bura.1"
+version = "0.3.0-bura.2"
 description = "Fusion 0.3 with native styling interoperability and collection fixes"
 license = "MIT"
 authors = ["Elttob", "Bura"]
