@@ -113,6 +113,11 @@ function class._evaluate(
 ): boolean
 	if self._playing then
 		depend(self, self._timer)
+		-- An ExternalTime is changed on update steps only while woken.
+		local timer = self._timer :: any
+		if timer._wake ~= nil then
+			timer:_wake()
+		end
 		local currentTime = peek(self._timer)
 		local oldValue = self._EXTREMELY_DANGEROUS_usedAsValue
 		local newValue = currentTime - self._measureTimeSince

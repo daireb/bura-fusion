@@ -28,7 +28,21 @@ class._EXTREMELY_DANGEROUS_usedAsValue = External.lastUpdateStep()
 
 local METATABLE = table.freeze {__index = class}
 
-local allTimers: {Self} = {}
+-- Only timers that a playing stopwatch depends on are changed on each update
+-- step, so a settled animation costs nothing per frame. A playing stopwatch
+-- wakes its timer; the step drops a timer once nothing depends on it.
+local activeTimers: {[Self]: true} = {}
+-- The active timers, changed in order of creation. Entries that left
+-- `activeTimers` are dropped by the next step.
+local stepOrder: {Self} = {}
+local stepOrderSorted = true
+
+local function byCreation(
+	a: Self,
+	b: Self
+): boolean
+	return a.createdAt < b.createdAt
+end
 
 local function ExternalTime(
 	scope: Types.Scope<unknown>
@@ -46,16 +60,26 @@ local function ExternalTime(
 	) :: any
 	local destroy = function()
 		self.scope = nil
-		local index = table.find(allTimers, self)
-		if index ~= nil then
-			table.remove(allTimers, index)
-		end
+		activeTimers[self] = nil
 	end
 	self.oldestTask = destroy
 	nicknames[self.oldestTask] = "ExternalTime"
 	table.insert(scope, destroy)
-	table.insert(allTimers, self)
 	return self
+end
+
+--[[
+	Changes this timer on every update step from now on, until nothing depends
+	on it. A playing stopwatch calls this whenever it evaluates.
+]]
+function class._wake(
+	self: Self
+): ()
+	if activeTimers[self] == nil and self.scope ~= nil then
+		activeTimers[self] = true
+		table.insert(stepOrder, self)
+		stepOrderSorted = false
+	end
 end
 
 function class._evaluate(
@@ -73,8 +97,31 @@ External.bindToUpdateStep(function(
 	externalNow: number
 ): ()
 	class._EXTREMELY_DANGEROUS_usedAsValue = External.lastUpdateStep()
-	for _, timer in allTimers do
+	if not stepOrderSorted then
+		table.sort(stepOrder, byCreation)
+		stepOrderSorted = true
+	end
+	-- Changing a timer can wake, drop or destroy others. Timers woken during
+	-- the step are appended past `count` and first change on the next step; a
+	-- timer that left the set is skipped, and its entry is compacted away.
+	local count = #stepOrder
+	local kept = 0
+	for index = 1, count do
+		local timer = stepOrder[index]
+		if activeTimers[timer] == nil then
+			continue
+		elseif next(timer.dependentSet) == nil then
+			activeTimers[timer] = nil
+			continue
+		end
+		kept += 1
+		stepOrder[kept] = timer
 		change(timer)
+	end
+	local total = #stepOrder
+	table.move(stepOrder, count + 1, total, kept + 1)
+	for index = kept + (total - count) + 1, total do
+		stepOrder[index] = nil
 	end
 end)
 

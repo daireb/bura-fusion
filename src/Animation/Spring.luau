@@ -217,11 +217,12 @@ function class._evaluate<T>(
 		self._EXTREMELY_DANGEROUS_usedAsValue = self._goal :: T
 		return false
 	end
-	-- depend(self, goal)
 	local nextFrameGoal = peek(goal)
 	-- Protect against NaN goals.
 	if nextFrameGoal ~= nextFrameGoal then
 		External.logWarn("springNanGoal")
+		-- Without this it would never evaluate again, even for a later goal.
+		depend(self, goal)
 		return false
 	end
 	local nextFrameGoalType = typeof(nextFrameGoal)
@@ -230,6 +231,8 @@ function class._evaluate<T>(
 	local stopwatch = self._stopwatch :: Stopwatch.Stopwatch
 	local elapsed = peek(stopwatch)
 	depend(self, stopwatch)
+	local wasAsleep = (stopwatch :: any)._playing == false
+	local settled = false
 
 	local oldValue = self._EXTREMELY_DANGEROUS_usedAsValue
 	local newValue: T
@@ -275,10 +278,7 @@ function class._evaluate<T>(
 			for index = 1, self._activeNumSprings do
 				self._activeLatestP[index] = self._activeTargetP[index]
 			end
-			-- TODO: figure out how to do sleeping correctly for single frame
-			-- changes
-			-- stopwatch:pause()
-			-- stopwatch:zero()
+			settled = true
 		end
 		-- Pack springs into final value.
 		newValue = packType(self._activeLatestP, self._activeType) :: any
@@ -313,6 +313,22 @@ function class._evaluate<T>(
 		self._activeSpeed = nextFrameSpeed
 		stopwatch:zero()
 		stopwatch:unpause()
+	elseif settled then
+		-- Sleep: with its stopwatch stopped, the update step no longer changes
+		-- this spring, and nothing downstream re-evaluates.
+		stopwatch:pause()
+		stopwatch:zero()
+	end
+
+	-- A moving spring picks up its goal on its next step, after integrating the
+	-- last frame's motion, so it does not depend on the goal: an animation
+	-- earlier in the same step that moved the goal would otherwise restart its
+	-- stopwatch before it ticks, every frame, and it would never move. Asleep,
+	-- it hears of a new goal only by depending on it. It keeps that dependency
+	-- through the evaluation that wakes it, so a goal that changes back before
+	-- the next step is heard too.
+	if wasAsleep or (stopwatch :: any)._playing == false then
+		depend(self, goal)
 	end
 
 	-- Push update and check for similarity.
