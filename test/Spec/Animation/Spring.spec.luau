@@ -377,4 +377,87 @@ return function()
 
 		doCleanup(scope)
 	end)
+
+	it("moves like a state goal that never changes when its goal is constant", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local constant = Spring(scope, 5, 20, 0.5)
+		local state = Spring(scope, Value(scope, 5), 20, 0.5)
+		step(3)
+		for _, spring in {constant, state} do
+			spring:setPosition(0)
+			spring:addVelocity(3)
+		end
+		for _ = 1, 240 do
+			step()
+			expect(peek(constant)).to.equal(peek(state))
+		end
+		expect(peek(constant)).to.equal(5)
+		expect(isAsleep(constant)).to.equal(true)
+
+		doCleanup(scope)
+	end)
+
+	it("rests on a constant goal as a finished tween", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local tween = Tween(scope, 5, TweenInfo.new(1))
+		step()
+		expect(peek(tween)).to.equal(5)
+		expect(isAsleep(tween)).to.equal(true)
+
+		doCleanup(scope)
+	end)
+
+	it("holds a goal that cannot animate", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local constant = Spring(scope, false)
+		local goal = Value(scope, "a")
+		local state = Spring(scope, goal)
+		step(5)
+		expect(peek(constant)).to.equal(false)
+		expect(peek(state)).to.equal("a")
+		goal:set("b")
+		step(5)
+		expect(peek(state)).to.equal("b")
+		expect(isAsleep(state)).to.equal(true)
+
+		doCleanup(scope)
+	end)
+
+	it("runs an observer of two springs once a frame, with both stepped", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local goal = Value(scope, 0)
+		local first = Spring(scope, goal, 20, 1)
+		local second = Spring(scope, goal, 20, 1)
+		local both = Computed(scope, function(use)
+			return {use(first), use(second)}
+		end)
+		local runs = 0
+		local mismatched = 0
+		Observer(scope, both):onChange(function()
+			runs += 1
+			local pair = peek(both)
+			if pair[1] ~= pair[2] then
+				mismatched += 1
+			end
+		end)
+		step()
+		goal:set(10)
+		for _ = 1, 10 do
+			local before = runs
+			step()
+			expect(runs - before <= 1).to.equal(true)
+		end
+		expect(runs > 0).to.equal(true)
+		expect(mismatched).to.equal(0)
+
+		doCleanup(scope)
+	end)
 end

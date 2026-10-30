@@ -42,3 +42,17 @@ Acceptance: number keys that are not an array keep their places, or closing hole
 Reading a `ForEach` key or item state from an object the processor built crosses scopes: the state lives in the child's scope and the reader in the build scope. `Memory/whichLivesLonger` then scans both scopes and allocates three tables per read. In Lune, with every item of 2,000 changed and one observed reader per child, `ForEach` by key took 26-29 ms (the medians of five runs) and 1.7 MB per update, against 23-25 ms and 1.2 MB for `ForValueStates` from the closed PR #3, whose value state lives in the build scope. Reusing scratch tables would speed up every cross-scope read. Deferred until a profile of the game shows it matters. Live servers and clients now skip the scan (FORK.md, "Development and live"), so this costs only in Studio and tests.
 
 Acceptance: the same lifetime warnings as now, and fewer allocations per cross-scope read, measured.
+
+## Errors that leave an object busy
+
+`evaluate` has no try/finally, so an error out of an object's `_evaluate` leaves it busy for good, as in Fusion 0.3. The likeliest one is a cleanup task that throws while a Computed or For object discards its old scope. Every later change that reaches the object raises `infiniteLoop`, the eager objects after it in that change don't run, and one stuck object downstream of an animation stops every newer animation each frame. Smaller ones of the same kind: a `%` in an error message makes `formatError` throw while logging, and a Computed destroyed by its own processor or old scope's cleanup throws `poisonedScope` or `destroyedTwice` and leaks its new scope.
+
+Draft PR #7 fixed all of these with an evaluation stack, at about a tenth more per observer update, and two reviews kept finding bugs in it. Deferred until one shows up in the game. The cheapest first step then is a `doCleanup` that logs a failing task and carries on, which fixes the cleanup case with no cost per update.
+
+Acceptance: the case seen in the game no longer freezes, with no measurable cost per update.
+
+## Writes that reach a busy object
+
+A write that reaches an object while it is busy still raises `infiniteLoop` after the source has its new value and before anything downstream is invalidated: an observer that clamps the value it watches, two-way sync with rounding, a Computed or For processor that writes what it read, and `Out` or `onBind` writing an output a parent processor reads. The write is half applied and dependents stay stale until the source changes again. `Spring:setPosition` also shows only on the next frame, against the docs' "Immediately snaps"; showing it at once makes the setter propagate, so an observer of a spring that calls its own setter would hit the same `infiniteLoop`. Refusing the write before the value is stored is consistent but breaks code that relies on the half-applied write landing, such as a menu kept closed by writing its click state back to nil.
+
+A fix would run listeners only once the graph settles, which changes when every observer runs relative to a write made inside a listener. Deferred until one of these causes a bug in the game.
