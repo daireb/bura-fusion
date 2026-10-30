@@ -104,12 +104,11 @@ function evaluate(
 	else
 		changed = compute(target, forceComputation, firstEvaluation)
 	end
-	-- Only false if a processor yielded and something else evaluated meanwhile;
+	-- Only false if a processor yielded and resumed after the stack moved on;
 	-- the depth is then left to whatever is evaluating now.
 	if stack[index] == target then
 		-- An error that something below this caught and did not unwind, such
-		-- as user code's own pcall or a listener's thread, leaves deeper
-		-- objects behind.
+		-- as user code's own pcall, leaves deeper objects behind.
 		if state.depth ~= index then
 			unwind(index)
 		end

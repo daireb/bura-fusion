@@ -345,6 +345,11 @@ function class._evaluate<T>(
 		newValue = nextFrameGoal
 	elseif elapsed <= 0 then
 		newValue = oldValue
+	elseif self._activeNumSprings == 0 then
+		-- A goal that cannot animate, such as a boolean or a string, is held
+		-- as it is; packing no springs would give nil.
+		newValue = nextFrameGoal
+		settled = true
 	else
 		-- Calculate spring motion.
 		-- IMPORTANT: use the parameters from last frame, not this frame. We're

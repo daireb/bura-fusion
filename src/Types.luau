@@ -305,9 +305,10 @@ export type ExternalProvider = {
 		errorString: string
 	) -> (),
 	
+	-- Returns the thread the task runs in, if the provider has one.
 	doTaskImmediate: (
 		resume: () -> ()
-	) -> (),
+	) -> thread?,
 	doTaskDeferred: (
 		resume: () -> ()
 	) -> (),

@@ -29,7 +29,11 @@ local function formatError(
 	end
 	messageText = messageText:format(...)
 	if error ~= nil then
-		messageText = messageText:gsub("ERROR_MESSAGE", error.message)
+		-- A function, so that a `%` in the message is not read as a capture.
+		local message = error.message
+		messageText = messageText:gsub("ERROR_MESSAGE", function()
+			return message
+		end)
 		if error.context ~= nil then
 			messageText ..= ` ({error.context})`
 		end

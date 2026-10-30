@@ -78,6 +78,32 @@ return function()
 		doCleanup(scope)
 	end)
 
+	it("leaves no cycle behind when a processor catches a cyclic use", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local input = Value(scope, 0)
+		local first, second
+		first = Computed(scope, function(use)
+			use(input)
+			return use(second)
+		end)
+		second = Computed(scope, function(use)
+			return use(first)
+		end)
+		captureLogs("logErrorNonFatal", function()
+			peek(first)
+		end)
+		local runs = 0
+		Observer(scope, input):onChange(function()
+			runs += 1
+		end)
+		input:set(1)
+		expect(runs).to.equal(1)
+
+		doCleanup(scope)
+	end)
+
 	it("leaves nothing busy when a processor catches an error from what it uses", function()
 		local expect = getfenv().expect
 

@@ -20,6 +20,11 @@ local function depend<T>(
 	if table.isfrozen(dependent.dependencySet) or table.isfrozen(dependency.dependentSet) then
 		External.logError("cannotDepend", nil, nameOf(dependent, "Dependent"), nameOf(dependency, "dependency"))
 	end
+	-- Raised before the edge exists, as evaluating it would, so that a caller
+	-- that catches this is not left in a cycle.
+	if dependency.validity == "busy" then
+		External.logError("infiniteLoop")
+	end
 	-- Subscribed before the dependency is brought up to date, so that a
 	-- dependent whose dependency errors still evaluates again when it changes.
 	-- The mark is the dependent's current evaluation (see evaluate).

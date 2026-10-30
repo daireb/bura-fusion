@@ -411,6 +411,24 @@ return function()
 		doCleanup(scope)
 	end)
 
+	it("holds a goal that cannot animate", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local constant = Spring(scope, false)
+		local goal = Value(scope, "a")
+		local state = Spring(scope, goal)
+		step(5)
+		expect(peek(constant)).to.equal(false)
+		expect(peek(state)).to.equal("a")
+		goal:set("b")
+		step(5)
+		expect(peek(state)).to.equal("b")
+		expect(isAsleep(state)).to.equal(true)
+
+		doCleanup(scope)
+	end)
+
 	it("runs an observer of two springs once a frame, with both stepped", function()
 		local expect = getfenv().expect
 

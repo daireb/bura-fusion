@@ -170,4 +170,15 @@ return function()
 		expect(runs[1]).to.equal(3)
 		expect(runs[2]).to.equal(1)
 	end)
+
+	it("throws once for tasks it cannot take out of the scope", function()
+		local expect = getfenv().expect
+
+		local tasks = table.freeze({
+			function() end
+		})
+		expect(function()
+			doCleanup(tasks)
+		end).to.throw()
+	end)
 end

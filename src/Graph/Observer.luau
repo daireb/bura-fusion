@@ -18,6 +18,7 @@ local checkLifetime = require(Package.Memory.checkLifetime)
 local castToGraph = require(Package.Graph.castToGraph)
 local depend = require(Package.Graph.depend)
 local evaluate = require(Package.Graph.evaluate)
+local evaluationStack = require(Package.Graph.evaluationStack)
 -- Utility
 local nicknames = require(Package.Utility.nicknames)
 
@@ -120,7 +121,14 @@ function class._evaluate(
 		if self.scope == nil then
 			break
 		end
-		External.doTaskImmediate(callback)
+		local depth = evaluationStack.state.depth
+		local thread = External.doTaskImmediate(callback)
+		-- The listener's thread left objects on the stack: it errored partway
+		-- through evaluating them, or yielded there and is still running.
+		if evaluationStack.state.depth ~= depth then
+			local suspended = thread ~= nil and coroutine.status(thread) == "suspended"
+			evaluationStack.unwind(depth, suspended)
+		end
 	end
 	return true
 end

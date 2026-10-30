@@ -71,8 +71,10 @@ local function Tween<T>(
 			lastChange = nil,
 			scope = scope,
 			validity = "invalid",
-			_activeDuration = nil,
-			_activeElapsed = nil,
+			-- Zero rather than nil, so that a goal that starts as nil starts
+			-- finished rather than comparing nil.
+			_activeDuration = 0,
+			_activeElapsed = 0,
 			_activeFrom = nil,
 			_activeTo = nil,
 			_activeTweenInfo = nil,

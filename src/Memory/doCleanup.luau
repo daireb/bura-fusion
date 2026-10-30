@@ -82,9 +82,16 @@ function doCleanup(
 			-- in the middle of a change. The loop is entered again after an
 			-- error rather than protecting each task.
 			while true do
+				local remaining = #task
 				local ok: boolean, err: unknown = xpcall(cleanupTasks, parseError, task)
 				if ok then
 					break
+				end
+				-- A task that could not be taken out of the scope, as from a
+				-- frozen table, would fail the same way every time.
+				if #task == remaining then
+					alreadyDestroying[task] = nil
+					error((err :: any).raw, 0)
 				end
 				External.logErrorNonFatal("cleanupTaskError", err :: any)
 			end

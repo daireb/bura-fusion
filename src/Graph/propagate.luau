@@ -53,17 +53,18 @@ end
 
 -- Entered again after an error, rather than protecting each object, which
 -- keeps one pcall per pass.
-local function runPass(): unknown?
+local function runPass(): (boolean, unknown)
 	local depth = state.depth
-	local firstError: unknown? = nil
+	local failed = false
+	local firstError: unknown = nil
 	while true do
 		local ok: boolean, err: unknown = xpcall(evaluateRest, addTrace)
 		if ok then
-			return firstError
+			return failed, firstError
 		end
 		evaluationStack.unwind(depth)
-		if firstError == nil then
-			firstError = err
+		if not failed then
+			failed, firstError = true, err
 		end
 	end
 end
@@ -126,10 +127,10 @@ local function propagate(
 	-- thread, so its error stops only that thread and the outer pass carries
 	-- on.
 	state.passes += 1
-	local firstError = runPass()
+	local failed, firstError = runPass()
 	state.passes -= 1
 	runningPass, runningIndex = outerPass, outerIndex
-	if firstError ~= nil then
+	if failed then
 		error(firstError, 0)
 	end
 end

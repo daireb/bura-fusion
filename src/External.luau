@@ -93,11 +93,11 @@ end
 ]]
 function External.doTaskImmediate(
 	resume: () -> ()
-)
+): thread?
 	if currentProvider == nil then
-		External.logError("noTaskScheduler")
+		return External.logError("noTaskScheduler")
 	else
-		currentProvider.doTaskImmediate(resume)
+		return currentProvider.doTaskImmediate(resume)
 	end
 end
 

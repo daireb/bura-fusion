@@ -32,19 +32,27 @@ local stack: {Types.GraphObject} = {}
 evaluationStack.stack = stack
 
 --[[
-	Returns every object evaluating deeper than `depth` to valid. Each keeps its
-	old value and stays subscribed to what it used before and what it used this
-	time (see `evaluate`), so it evaluates again when one of those changes, as a
-	Computed whose processor errors does.
+	Takes every object deeper than `depth` off the stack and returns each to
+	valid. Each keeps its old value and stays subscribed to what it used before
+	and what it used this time (see `evaluate`), so it evaluates again when one
+	of those changes, as a Computed whose processor errors does.
+
+	Given `stillRunning`, the objects are only taken off the stack: their
+	thread yielded partway through, as a processor that yields from a
+	listener's thread does, so they stay busy and finish when it resumes, as in
+	Fusion 0.3.
 ]]
 function evaluationStack.unwind(
-	depth: number
+	depth: number,
+	stillRunning: boolean?
 ): ()
 	local state = evaluationStack.state
 	for index = state.depth, depth + 1, -1 do
 		local object = stack[index]
 		if object ~= nil then
-			object.validity = "valid"
+			if not stillRunning then
+				object.validity = "valid"
+			end
 			stack[index] = nil
 		end
 	end

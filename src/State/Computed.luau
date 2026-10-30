@@ -114,8 +114,18 @@ function class._evaluate<T, S>(
 	end
 	local ok, newValue = xpcall(self._processor, parseError, use, innerScope)
 	local innerScope = scopePool.giveIfEmpty(innerScope)
-	-- Destroyed by something its processor set off: the destroy cleaned up the
-	-- old inner scope, and nothing will clean up the new one.
+	if ok and self.scope ~= nil then
+		-- Detached first, so that a destroy it sets off does not clean it
+		-- again.
+		local oldInnerScope = self._innerScope
+		self._innerScope = nil
+		if oldInnerScope ~= nil then
+			doCleanup(oldInnerScope)
+		end
+	end
+	-- Destroyed by something its processor or its old inner scope's cleanup
+	-- set off: the destroy cleaned up the old inner scope, and nothing will
+	-- clean up the new one.
 	if self.scope == nil then
 		if innerScope ~= nil then
 			doCleanup(innerScope)
@@ -128,9 +138,6 @@ function class._evaluate<T, S>(
 	end
 	if ok then
 		local similar = isSimilar(self._EXTREMELY_DANGEROUS_usedAsValue, newValue)
-		if self._innerScope ~= nil then
-			doCleanup(self._innerScope)
-		end
 		self._innerScope = innerScope
 
 		self._EXTREMELY_DANGEROUS_usedAsValue = newValue
