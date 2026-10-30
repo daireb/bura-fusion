@@ -15,7 +15,9 @@ local change = require(Package.Graph.change)
 -- Utility
 local nicknames = require(Package.Utility.nicknames)
 
-type ExternalTime = Types.StateObject<number>
+export type ExternalTime = Types.StateObject<number> & {
+	_wake: (ExternalTime) -> ()
+}
 
 type Self = ExternalTime
 
@@ -28,7 +30,26 @@ class._EXTREMELY_DANGEROUS_usedAsValue = External.lastUpdateStep()
 
 local METATABLE = table.freeze {__index = class}
 
-local allTimers: {Self} = {}
+-- Only timers that a playing stopwatch depends on are changed on each update
+-- step, so a settled animation costs nothing per frame. A playing stopwatch
+-- wakes its timer; the step drops a timer once nothing depends on it.
+local activeTimers: {[Self]: true} = {}
+-- The active timers, changed in order of creation. Entries that left
+-- `activeTimers` are dropped by the next step.
+local stepOrder: {Self} = {}
+local stepOrderSorted = true
+-- How far the running step has got through `stepOrder`, and how many of the
+-- entries it passed are kept, so that an error out of a change still leaves
+-- `stepOrder` compacted.
+local stepIndex = 0
+local stepKept = 0
+
+local function byCreation(
+	a: Self,
+	b: Self
+): boolean
+	return a.createdAt < b.createdAt
+end
 
 local function ExternalTime(
 	scope: Types.Scope<unknown>
@@ -46,16 +67,26 @@ local function ExternalTime(
 	) :: any
 	local destroy = function()
 		self.scope = nil
-		local index = table.find(allTimers, self)
-		if index ~= nil then
-			table.remove(allTimers, index)
-		end
+		activeTimers[self] = nil
 	end
 	self.oldestTask = destroy
 	nicknames[self.oldestTask] = "ExternalTime"
 	table.insert(scope, destroy)
-	table.insert(allTimers, self)
 	return self
+end
+
+--[[
+	Changes this timer on every update step from now on, until nothing depends
+	on it. A playing stopwatch calls this whenever it evaluates.
+]]
+function class._wake(
+	self: Self
+): ()
+	if activeTimers[self] == nil and self.scope ~= nil then
+		activeTimers[self] = true
+		table.insert(stepOrder, self)
+		stepOrderSorted = false
+	end
 end
 
 function class._evaluate(
@@ -69,12 +100,46 @@ function class._evaluate(
 	return true
 end
 
+-- Changing a timer can wake, drop or destroy others. Timers woken during the
+-- step are appended past `count` and first change on the next step; a timer
+-- that left the set is skipped, and its entry is compacted away.
+local function changeTimers(
+	count: number
+): ()
+	while stepIndex < count do
+		stepIndex += 1
+		local timer = stepOrder[stepIndex]
+		if activeTimers[timer] == nil then
+			continue
+		elseif next(timer.dependentSet) == nil then
+			activeTimers[timer] = nil
+			continue
+		end
+		stepKept += 1
+		stepOrder[stepKept] = timer
+		change(timer)
+	end
+end
+
 External.bindToUpdateStep(function(
 	externalNow: number
 ): ()
 	class._EXTREMELY_DANGEROUS_usedAsValue = External.lastUpdateStep()
-	for _, timer in allTimers do
-		change(timer)
+	if not stepOrderSorted then
+		table.sort(stepOrder, byCreation)
+		stepOrderSorted = true
+	end
+	stepIndex, stepKept = 0, 0
+	local ok: boolean, err: unknown = pcall(changeTimers, #stepOrder)
+	-- Closes the gap between the kept entries and the ones the step did not
+	-- reach, including any woken during it.
+	local total = #stepOrder
+	table.move(stepOrder, stepIndex + 1, total, stepKept + 1)
+	for index = stepKept + (total - stepIndex) + 1, total do
+		stepOrder[index] = nil
+	end
+	if not ok then
+		error(err, 0)
 	end
 end)
 
