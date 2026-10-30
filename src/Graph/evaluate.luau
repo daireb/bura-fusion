@@ -78,6 +78,17 @@ function evaluate(
 	if not (firstEvaluation or forceComputation or target.validity == "invalid") then
 		return false
 	end
+	-- A source, such as a Value or a timer, can depend on nothing, so its
+	-- evaluation only counts the change: it cannot error, and needs no place
+	-- on the stack. `Value:set` comes through here on every change.
+	if table.isfrozen(target.dependencySet) then
+		local changed = target:_evaluate() or firstEvaluation
+		if changed then
+			target.lastChange = os.clock()
+		end
+		target.validity = "valid"
+		return changed
+	end
 	local depth = state.depth
 	local index = depth + 1
 	state.depth = index
