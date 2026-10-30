@@ -47,7 +47,8 @@ type Self<T> = Types.Spring<T> & {
 	_speed: Types.UsedAs<number>,
 	_damping: Types.UsedAs<number>,
 	_goal: Types.UsedAs<T>,
-	_stopwatch: Stopwatch.Stopwatch
+	_stopwatch: Stopwatch.Stopwatch,
+	_wake: Wake?
 }
 
 local class = {}
@@ -58,6 +59,8 @@ class.timeliness = "eager"
 local METATABLE = table.freeze {__index = class}
 
 type Wake = Types.GraphObject & {
+	arm: (Wake) -> (),
+	_arming: boolean,
 	_goal: Types.StateObject<unknown>,
 	_stopwatch: Stopwatch.Stopwatch
 }
@@ -71,6 +74,10 @@ type Wake = Types.GraphObject & {
 	such as another animation, would otherwise restart its stopwatch before it
 	ticked and stand still; and a goal set from downstream of the spring, such
 	as by an observer of it, would form a cycle.
+
+	The wake depends on the goal only from when the spring sleeps until the
+	goal next changes, so a moving spring leaves a lazy goal lazy and adds
+	nothing to a goal change.
 ]]
 local wakeClass = {}
 wakeClass.type = "Graph"
@@ -87,10 +94,26 @@ function wakeClass._evaluate(
 	if self.scope == nil then
 		return false
 	end
-	depend(self, self._goal)
-	-- The spring picks up the new goal on the step its timer next changes.
-	self._stopwatch:unpause()
+	if self._arming then
+		self._arming = false
+		depend(self, self._goal)
+	else
+		-- The spring picks up the new goal on the step its timer next changes.
+		self._stopwatch:unpause()
+	end
+	-- Also when arming: the wake then counts only goal changes after it.
 	return true
+end
+
+--- Wakes the spring on the goal's next change. Called as the spring sleeps.
+function wakeClass.arm(
+	self: Wake
+): ()
+	if self.scope == nil then
+		return
+	end
+	self._arming = true
+	evaluate(self, true)
 end
 
 table.freeze(wakeClass)
@@ -99,7 +122,7 @@ local function Wake(
 	scope: Types.Scope<unknown>,
 	goal: Types.StateObject<unknown>,
 	stopwatch: Stopwatch.Stopwatch
-): ()
+): Wake
 	local self: Wake = setmetatable(
 		{
 			createdAt = os.clock(),
@@ -107,6 +130,7 @@ local function Wake(
 			lastChange = nil,
 			scope = scope,
 			validity = "invalid",
+			_arming = false,
 			_goal = goal,
 			_stopwatch = stopwatch
 		},
@@ -123,6 +147,7 @@ local function Wake(
 	nicknames[self.oldestTask] = "Spring (internal wake)"
 	table.insert(scope, destroy)
 	evaluate(self, true)
+	return self
 end
 
 local function Spring<T>(
@@ -138,12 +163,11 @@ local function Spring<T>(
 
 	local goalState = castToState(goal)
 	local stopwatch = nil
+	local wake = nil
 	if goalState ~= nil then
 		stopwatch = Stopwatch(scope, ExternalTime(scope))
 		stopwatch:unpause()
-		-- Made while the stopwatch plays, so that a spring which starts on a
-		-- NaN goal is not woken for it.
-		Wake(scope, goalState, stopwatch)
+		wake = Wake(scope, goalState, stopwatch)
 	end
 
 	local speed = speed or 10
@@ -171,7 +195,8 @@ local function Spring<T>(
 			_EXTREMELY_DANGEROUS_usedAsValue = peek(goal),
 			_goal = goal,
 			_speed = speed,
-			_stopwatch = stopwatch
+			_stopwatch = stopwatch,
+			_wake = wake
 		},
 		METATABLE
 	) :: any
@@ -301,6 +326,8 @@ function class._evaluate<T>(
 		-- Sleep until the goal changes again, which wakes the stopwatch.
 		self._stopwatch:pause()
 		depend(self, self._stopwatch)
+		local wake = self._wake :: Wake
+		wake:arm()
 		return false
 	end
 	local nextFrameGoalType = typeof(nextFrameGoal)
@@ -398,6 +425,8 @@ function class._evaluate<T>(
 		self._activeStartV = table.create(self._activeNumSprings, 0)
 		stopwatch:pause()
 		stopwatch:zero()
+		local wake = self._wake :: Wake
+		wake:arm()
 	end
 
 	-- Push update and check for similarity.

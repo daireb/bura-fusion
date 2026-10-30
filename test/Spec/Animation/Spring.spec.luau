@@ -204,6 +204,32 @@ return function()
 		doCleanup(scope)
 	end)
 
+	it("leaves a computed goal lazy while it moves", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local input = Value(scope, 0)
+		local runs = 0
+		local goal = Computed(scope, function(use)
+			runs += 1
+			return use(input)
+		end)
+		local spring = Spring(scope, goal, 10, 1)
+		step()
+		input:set(10)
+		step(2)
+		expect(isAsleep(spring)).to.equal(false)
+		runs = 0
+		for index = 1, 5 do
+			input:set(10 + index)
+		end
+		expect(runs).to.equal(0)
+		step()
+		expect(runs).to.equal(1)
+
+		doCleanup(scope)
+	end)
+
 	it("follows a goal that is itself animating", function()
 		local expect = getfenv().expect
 
