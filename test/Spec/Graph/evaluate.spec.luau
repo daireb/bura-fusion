@@ -112,8 +112,10 @@ return function()
 		local throwing = Throwing(scope, input)
 		input:set(1)
 		-- Computed for the first time, so the error reaches its processor
-		-- rather than its check of what it used.
+		-- rather than its check of what it used. It is not subscribed to what
+		-- errored, so it also uses the input to hear of the fix.
 		local computed = Computed(scope, function(use)
+			use(input)
 			return use(throwing)
 		end)
 		local errors = captureLogs("logErrorNonFatal", function()

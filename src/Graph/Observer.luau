@@ -121,13 +121,17 @@ function class._evaluate(
 		if self.scope == nil then
 			break
 		end
-		local depth = evaluationStack.state.depth
-		local thread = External.doTaskImmediate(callback)
-		-- The listener's thread left objects on the stack: it errored partway
-		-- through evaluating them, or yielded there and is still running.
-		if evaluationStack.state.depth ~= depth then
-			local suspended = thread ~= nil and coroutine.status(thread) == "suspended"
-			evaluationStack.unwind(depth, suspended)
+		-- The listener's own evaluations count as outermost, so an error out of
+		-- one, caught or not, unwinds before it leaves them.
+		local state = evaluationStack.state
+		local depth, base, passes = state.depth, state.base, state.passes
+		state.base, state.passes = depth, 0
+		External.doTaskImmediate(callback)
+		state.base, state.passes = base, passes
+		-- Objects left on the stack were being evaluated when the listener's
+		-- thread yielded; they stay busy until it resumes.
+		if state.depth ~= depth then
+			evaluationStack.unwind(depth, true)
 		end
 	end
 	return true

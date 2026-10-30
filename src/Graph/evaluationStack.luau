@@ -24,6 +24,9 @@ local evaluationStack = {}
 evaluationStack.state = {
 	-- How many objects are evaluating.
 	depth = 0,
+	-- The depth that counts as outermost: zero, or the depth of the observer
+	-- whose listener is running.
+	base = 0,
 	-- How many eager passes are running; a pass catches its own errors.
 	passes = 0
 }
@@ -40,7 +43,8 @@ evaluationStack.stack = stack
 	Given `stillRunning`, the objects are only taken off the stack: their
 	thread yielded partway through, as a processor that yields from a
 	listener's thread does, so they stay busy and finish when it resumes, as in
-	Fusion 0.3.
+	Fusion 0.3. One that errors after it resumes stays busy, also as in Fusion
+	0.3.
 ]]
 function evaluationStack.unwind(
 	depth: number,

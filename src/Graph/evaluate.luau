@@ -9,7 +9,7 @@ local task = nil -- Disable usage of Roblox's task scheduler
 
 	An error out of `_evaluate`, or out of a dependency it checks, leaves no
 	object busy (see `evaluationStack`). Only the outermost evaluation outside
-	an eager pass pays for a pcall.
+	an eager pass, and the outermost one in each listener, pays for a pcall.
 
 	https://fluff.blog/2024/04/16/monotonic-painting.html
 ]]
@@ -94,10 +94,14 @@ function evaluate(
 	state.depth = index
 	stack[index] = target
 	local changed: boolean
-	if depth == 0 and state.passes == 0 then
+	if depth == state.base and state.passes == 0 then
 		local ok: boolean, result: unknown = xpcall(compute, addTrace, target, forceComputation, firstEvaluation)
 		if not ok then
-			unwind(0)
+			-- Not on the stack any more if it yielded, and its observer took
+			-- it off (see Observer).
+			if stack[index] == target then
+				unwind(depth)
+			end
 			error(result, 0)
 		end
 		changed = result :: boolean

@@ -26,6 +26,9 @@ local alreadyDestroying: {[Types.Task]: true} = {}
 
 local doCleanup: (Types.Task) -> ()
 
+-- Counts tasks taken out of scopes, so that a retry knows it got further.
+local removed = 0
+
 -- Each task leaves the scope before it runs, so after an error the loop picks
 -- up with the next one.
 local function cleanupTasks(
@@ -34,6 +37,7 @@ local function cleanupTasks(
 	for index = #task, 1, -1 do
 		local subtask = task[index]
 		task[index] = nil
+		removed += 1
 		doCleanup(subtask)
 	end
 end
@@ -82,14 +86,14 @@ function doCleanup(
 			-- in the middle of a change. The loop is entered again after an
 			-- error rather than protecting each task.
 			while true do
-				local remaining = #task
+				local before = removed
 				local ok: boolean, err: unknown = xpcall(cleanupTasks, parseError, task)
 				if ok then
 					break
 				end
 				-- A task that could not be taken out of the scope, as from a
 				-- frozen table, would fail the same way every time.
-				if #task == remaining then
+				if removed == before then
 					alreadyDestroying[task] = nil
 					error((err :: any).raw, 0)
 				end

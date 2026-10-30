@@ -31,8 +31,8 @@ RobloxExternal.policies = {
 ]]
 function RobloxExternal.doTaskImmediate(
 	resume: () -> ()
-): thread
-   return task.spawn(resume)
+)
+   task.spawn(resume)
 end
 
 --[[

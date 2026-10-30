@@ -17,24 +17,19 @@ local function depend<T>(
 	dependent: Types.GraphObject,
 	dependency: Types.GraphObject
 ): ()
-	if table.isfrozen(dependent.dependencySet) or table.isfrozen(dependency.dependentSet) then
-		External.logError("cannotDepend", nil, nameOf(dependent, "Dependent"), nameOf(dependency, "dependency"))
-	end
-	-- Raised before the edge exists, as evaluating it would, so that a caller
-	-- that catches this is not left in a cycle.
-	if dependency.validity == "busy" then
-		External.logError("infiniteLoop")
-	end
-	-- Subscribed before the dependency is brought up to date, so that a
-	-- dependent whose dependency errors still evaluates again when it changes.
-	-- The mark is the dependent's current evaluation (see evaluate).
-	dependency.dependentSet[dependent] = true
-	dependent.dependencySet[dependency] = dependent._generation or true
 	-- Ensure dependencies are evaluated and up-to-date
 	-- when they are depended on. Also, newly created objects
 	-- might not have any transitive dependencies captured yet,
 	-- so ensure that they're present.
+	-- The edge is formed only once that succeeds, as in Fusion 0.3, so that
+	-- an error caught partway through a cycle leaves no cycle behind.
 	evaluate(dependency, false)
+	if table.isfrozen(dependent.dependencySet) or table.isfrozen(dependency.dependentSet) then
+		External.logError("cannotDepend", nil, nameOf(dependent, "Dependent"), nameOf(dependency, "dependency"))
+	end
+	dependency.dependentSet[dependent] = true
+	-- Marked with the dependent's current evaluation (see evaluate).
+	dependent.dependencySet[dependency] = dependent._generation or true
 end
 
 return depend

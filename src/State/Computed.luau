@@ -114,6 +114,9 @@ function class._evaluate<T, S>(
 	end
 	local ok, newValue = xpcall(self._processor, parseError, use, innerScope)
 	local innerScope = scopePool.giveIfEmpty(innerScope)
+	-- Compared before the old inner scope, which the old value may need, is
+	-- cleaned up.
+	local similar = ok and isSimilar(self._EXTREMELY_DANGEROUS_usedAsValue, newValue)
 	if ok and self.scope ~= nil then
 		-- Detached first, so that a destroy it sets off does not clean it
 		-- again.
@@ -137,7 +140,6 @@ function class._evaluate<T, S>(
 		return false
 	end
 	if ok then
-		local similar = isSimilar(self._EXTREMELY_DANGEROUS_usedAsValue, newValue)
 		self._innerScope = innerScope
 
 		self._EXTREMELY_DANGEROUS_usedAsValue = newValue
