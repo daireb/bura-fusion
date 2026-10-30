@@ -116,6 +116,94 @@ return function()
 		doCleanup(scope)
 	end)
 
+	it("keeps a position or velocity set after a parameter changed while asleep", function()
+		local expect = getfenv().expect
+
+		for _, case in {
+			{parameter = "speed", value = 40, setter = "setPosition", argument = 5},
+			{parameter = "speed", value = 40, setter = "setVelocity", argument = 50},
+			{parameter = "damping", value = 0.4, setter = "addVelocity", argument = 50}
+		} do
+			local scope = {}
+			local goal = Value(scope, 0)
+			local parameters = {speed = Value(scope, 20), damping = Value(scope, 1)}
+			local spring: any = Spring(scope, goal, parameters.speed, parameters.damping)
+			step(240)
+			parameters[case.parameter]:set(case.value)
+			step(30)
+			spring[case.setter](spring, case.argument)
+			step(2)
+			expect((peek(spring) :: number) > 0.1).to.equal(true)
+
+			doCleanup(scope)
+		end
+	end)
+
+	it("starts from a position set in the frame its goal changed", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local goal = Value(scope, 0)
+		local spring = Spring(scope, goal, 20, 1)
+		step(120)
+		goal:set(5)
+		step(3)
+		goal:set(10)
+		spring:setPosition(10)
+		step()
+		expect((peek(spring) :: number) > 9.9).to.equal(true)
+
+		doCleanup(scope)
+	end)
+
+	it("lets an observer of the spring set its goal", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local goal = Value(scope, 0)
+		local spring = Spring(scope, goal, 25, 1)
+		local flips = 0
+		Observer(scope, spring):onChange(function()
+			if flips < 6 and peek(spring) == peek(goal) then
+				flips += 1
+				goal:set(if peek(goal) == 0 then 10 else 0)
+			end
+		end)
+		goal:set(10)
+		step(1200)
+		expect(flips).to.equal(6)
+		expect(peek(spring)).to.equal(peek(goal))
+
+		doCleanup(scope)
+	end)
+
+	it("lets an observer of the sleeping spring and other state set its goal", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local goal = Value(scope, 0)
+		local other = Value(scope, false)
+		local spring = Spring(scope, goal, 25, 1)
+		local label = Computed(scope, function(use)
+			return `goal {use(goal)}`
+		end)
+		local both = Computed(scope, function(use)
+			return {spring = use(spring), other = use(other)}
+		end)
+		Observer(scope, both):onChange(function()
+			if peek(other) then
+				goal:set(1)
+			end
+		end)
+		step(120)
+		other:set(true)
+		step(600)
+		expect(peek(spring)).to.equal(1)
+		expect(peek(label)).to.equal("goal 1")
+
+		doCleanup(scope)
+	end)
+
 	it("follows a goal that is itself animating", function()
 		local expect = getfenv().expect
 
@@ -155,6 +243,24 @@ return function()
 		goal:set(4)
 		step(240)
 		expect(peek(spring)).to.equal(4)
+
+		doCleanup(scope)
+	end)
+
+	it("moves on when a NaN goal set while moving turns back into the same number", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local goal = Value(scope, 0)
+		local spring = Spring(scope, goal, 10, 1)
+		step(60)
+		goal:set(10)
+		step(5)
+		goal:set(0 / 0)
+		step(3)
+		goal:set(10)
+		step(300)
+		expect(peek(spring)).to.equal(10)
 
 		doCleanup(scope)
 	end)
