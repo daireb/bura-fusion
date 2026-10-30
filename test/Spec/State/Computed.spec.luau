@@ -10,6 +10,8 @@ local Value = require(Fusion.State.Value)
 local peek = require(Fusion.State.peek)
 local doCleanup = require(Fusion.Memory.doCleanup)
 
+local captureLogs = require(script.Parent.Parent.Parent.Util.captureLogs)
+
 return function()
 	local it = getfenv().it
 
@@ -169,5 +171,56 @@ return function()
 		peek(computed)
 		doCleanup(scope)
 		expect(destructed).to.equal(true)
+	end)
+	it("keeps computing when the cleanup of its old inner scope errors", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local dependency = Value(scope, 1)
+		local computed = Computed(scope, function(use, innerScope)
+			local value = use(dependency)
+			if value == 1 then
+				table.insert(innerScope, function()
+					error("This is an intentional error from a unit test")
+				end)
+			end
+			return value
+		end)
+		peek(computed)
+		local errors = captureLogs("logErrorNonFatal", function()
+			dependency:set(2)
+			expect(peek(computed)).to.equal(2)
+		end)
+		expect(errors[1]).to.equal("cleanupTaskError")
+		dependency:set(3)
+		expect(peek(computed)).to.equal(3)
+
+		doCleanup(scope)
+	end)
+
+	it("cleans up the inner scope of a run that destroys it", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local dependency = Value(scope, 1)
+		local computedScope = {}
+		local cleanups = 0
+		local computed = Computed(computedScope, function(use, innerScope)
+			table.insert(innerScope, function()
+				cleanups += 1
+			end)
+			local value = use(dependency)
+			if value == 2 then
+				doCleanup(computedScope)
+			end
+			return value
+		end)
+		peek(computed)
+		dependency:set(2)
+		peek(computed)
+		expect(cleanups).to.equal(2)
+		expect(computed.validity).to.equal("valid")
+
+		doCleanup(scope)
 	end)
 end

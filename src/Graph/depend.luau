@@ -17,17 +17,19 @@ local function depend<T>(
 	dependent: Types.GraphObject,
 	dependency: Types.GraphObject
 ): ()
+	if table.isfrozen(dependent.dependencySet) or table.isfrozen(dependency.dependentSet) then
+		External.logError("cannotDepend", nil, nameOf(dependent, "Dependent"), nameOf(dependency, "dependency"))
+	end
+	-- Subscribed before the dependency is brought up to date, so that a
+	-- dependent whose dependency errors still evaluates again when it changes.
+	-- The mark is the dependent's current evaluation (see evaluate).
+	dependency.dependentSet[dependent] = true
+	dependent.dependencySet[dependency] = dependent._generation or true
 	-- Ensure dependencies are evaluated and up-to-date
 	-- when they are depended on. Also, newly created objects
 	-- might not have any transitive dependencies captured yet,
 	-- so ensure that they're present.
 	evaluate(dependency, false)
-
-	if table.isfrozen(dependent.dependencySet) or table.isfrozen(dependency.dependentSet) then
-		External.logError("cannotDepend", nil, nameOf(dependent, "Dependent"), nameOf(dependency, "dependency"))
-	end
-	dependency.dependentSet[dependent] = true
-	dependent.dependencySet[dependency] = true
 end
 
 return depend

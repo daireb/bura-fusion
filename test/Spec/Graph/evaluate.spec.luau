@@ -5,12 +5,101 @@ local task = nil -- Disable usage of Roblox's task scheduler
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Fusion = ReplicatedStorage.Fusion
 
+local Types = require(Fusion.Types)
 local evaluate = require(Fusion.Graph.evaluate)
+local depend = require(Fusion.Graph.depend)
+local Observer = require(Fusion.Graph.Observer)
+local Value = require(Fusion.State.Value)
+local Computed = require(Fusion.State.Computed)
+local peek = require(Fusion.State.peek)
+local doCleanup = require(Fusion.Memory.doCleanup)
 
 local Graphs = require(script.Parent.Parent.Parent.Util.Graphs)
+local captureLogs = require(script.Parent.Parent.Parent.Util.captureLogs)
+
+-- A state whose own evaluation errors, outside any processor, while its input
+-- is 1.
+local function Throwing(
+	scope: {unknown},
+	input: Types.Value<number>
+): any
+	local self = {
+		type = "State",
+		kind = "Throwing",
+		timeliness = "lazy",
+		scope = scope,
+		createdAt = os.clock(),
+		dependencySet = {},
+		dependentSet = {},
+		lastChange = nil,
+		validity = "invalid",
+		_EXTREMELY_DANGEROUS_usedAsValue = 0
+	}
+	function self._evaluate(self): boolean
+		depend(self, input)
+		if peek(input) == 1 then
+			error("This is an intentional error from a unit test")
+		end
+		self._EXTREMELY_DANGEROUS_usedAsValue = peek(input)
+		return true
+	end
+	return self
+end
 
 return function()
 	local describe = getfenv().describe
+	local it = getfenv().it
+
+	it("lets the rest of a change run when an eager object errors, leaving nothing busy", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local input = Value(scope, 0)
+		local throwing = Throwing(scope, input)
+		local olderRuns = 0
+		Observer(scope, throwing):onChange(function()
+			olderRuns += 1
+		end)
+		local youngerRuns = 0
+		Observer(scope, input):onChange(function()
+			youngerRuns += 1
+		end)
+
+		expect(function()
+			input:set(1)
+		end).to.throw("intentional")
+		expect(youngerRuns).to.equal(1)
+		expect(throwing.validity).to.equal("valid")
+		input:set(2)
+		expect(youngerRuns).to.equal(2)
+		expect(olderRuns).to.equal(1)
+		expect(peek(throwing)).to.equal(2)
+
+		doCleanup(scope)
+	end)
+
+	it("leaves nothing busy when a processor catches an error from what it uses", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local input = Value(scope, 0)
+		local throwing = Throwing(scope, input)
+		input:set(1)
+		-- Computed for the first time, so the error reaches its processor
+		-- rather than its check of what it used.
+		local computed = Computed(scope, function(use)
+			return use(throwing)
+		end)
+		local errors = captureLogs("logErrorNonFatal", function()
+			expect(peek(computed)).to.equal(nil)
+		end)
+		expect(errors[1]).to.equal("callbackError")
+		expect(throwing.validity).to.equal("valid")
+		input:set(2)
+		expect(peek(computed)).to.equal(2)
+
+		doCleanup(scope)
+	end)
 
 	Graphs.propertyTest {
 		testing = "evaluate",

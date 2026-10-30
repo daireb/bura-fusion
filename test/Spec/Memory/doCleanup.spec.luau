@@ -8,6 +8,8 @@ local Fusion = ReplicatedStorage.Fusion
 local New = require(Fusion.Instances.New)
 local doCleanup = require(Fusion.Memory.doCleanup)
 
+local captureLogs = require(script.Parent.Parent.Parent.Util.captureLogs)
+
 return function()
 	local it = getfenv().it
 
@@ -143,5 +145,29 @@ return function()
 		expect(function()
 			doCleanup(cleanupFunc)
 		end).to.throw("destroyedTwice")
+	end)
+	it("logs a task that errors and still cleans up the rest of the scope", function()
+		local expect = getfenv().expect
+
+		local runs = {}
+		local tasks = {
+			function()
+				table.insert(runs, 1)
+			end,
+			function()
+				error("This is an intentional error from a unit test")
+			end,
+			function()
+				table.insert(runs, 3)
+			end
+		}
+		local errors = captureLogs("logErrorNonFatal", function()
+			doCleanup(tasks)
+		end)
+
+		expect(#errors).to.equal(1)
+		expect(errors[1]).to.equal("cleanupTaskError")
+		expect(runs[1]).to.equal(3)
+		expect(runs[2]).to.equal(1)
 	end)
 end

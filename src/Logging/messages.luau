@@ -14,6 +14,7 @@ return {
 	cannotConnectEvent = "The %s class doesn't have an event called '%s'.",
 	cannotCreateClass = "Can't create a new instance of class '%s'.",
 	cannotDepend = "%s can't depend on %s.",
+	cleanupTaskError = "A cleanup task errored, so it was skipped and the rest of the scope was still cleaned up:\nERROR_MESSAGE",
 	cleanupWasRenamed = "`Fusion.cleanup` was renamed to `Fusion.doCleanup`. This will be an error in future versions of Fusion.",
 	destroyedTwice = "`doCleanup()` was given something that it is already cleaning up. Unclear how to proceed.",
 	destructorRedundant = "%s destructors no longer do anything. If you wish to run code on destroy, `table.insert` a function into the `scope` argument. See discussion #292 on GitHub for advice.",

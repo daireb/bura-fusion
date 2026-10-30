@@ -74,7 +74,9 @@ local function Computed<T, S>(
 			dependency.dependentSet[self] = nil
 		end
 		if self._innerScope ~= nil then
-			doCleanup(self._innerScope)
+			local innerScope = self._innerScope
+			self._innerScope = nil
+			doCleanup(innerScope)
 		end
 	end
 	self.oldestTask = destroy
@@ -112,6 +114,18 @@ function class._evaluate<T, S>(
 	end
 	local ok, newValue = xpcall(self._processor, parseError, use, innerScope)
 	local innerScope = scopePool.giveIfEmpty(innerScope)
+	-- Destroyed by something its processor set off: the destroy cleaned up the
+	-- old inner scope, and nothing will clean up the new one.
+	if self.scope == nil then
+		if innerScope ~= nil then
+			doCleanup(innerScope)
+		end
+		for dependency in self.dependencySet do
+			dependency.dependentSet[self] = nil
+		end
+		table.clear(self.dependencySet)
+		return false
+	end
 	if ok then
 		local similar = isSimilar(self._EXTREMELY_DANGEROUS_usedAsValue, newValue)
 		if self._innerScope ~= nil then

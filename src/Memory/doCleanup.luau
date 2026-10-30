@@ -18,10 +18,27 @@ local Types = require(Package.Types)
 local External = require(Package.External)
 local scopePool = require(Package.Memory.scopePool)
 local poisonScope = require(Package.Memory.poisonScope)
+local parseError = require(Package.Logging.parseError)
 
+-- A task that errors stays marked, as in Fusion 0.3: unmarking it would need a
+-- pcall per task, which every cleanup would pay for.
 local alreadyDestroying: {[Types.Task]: true} = {}
 
-local function doCleanup(
+local doCleanup: (Types.Task) -> ()
+
+-- Each task leaves the scope before it runs, so after an error the loop picks
+-- up with the next one.
+local function cleanupTasks(
+	task: {Types.Task}
+): ()
+	for index = #task, 1, -1 do
+		local subtask = task[index]
+		task[index] = nil
+		doCleanup(subtask)
+	end
+end
+
+function doCleanup(
 	task: Types.Task
 ): ()
 	if alreadyDestroying[task] then
@@ -59,10 +76,17 @@ local function doCleanup(
 			local task = task :: {Types.Task}
 
 			-- It is important to iterate backwards through the table, since
-			-- objects are added in order of construction.
-			for index = #task, 1, -1 do
-				doCleanup(task[index])
-				task[index] = nil
+			-- objects are added in order of construction. A task that errors
+			-- is logged and skipped, so that the rest of the scope is still
+			-- cleaned up, as when a Computed or a For object discards a scope
+			-- in the middle of a change. The loop is entered again after an
+			-- error rather than protecting each task.
+			while true do
+				local ok: boolean, err: unknown = xpcall(cleanupTasks, parseError, task)
+				if ok then
+					break
+				end
+				External.logErrorNonFatal("cleanupTaskError", err :: any)
 			end
 
 			if External.isTimeCritical() then

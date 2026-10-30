@@ -12,6 +12,9 @@ local task = nil -- Disable usage of Roblox's task scheduler
 	eager objects take their place, in order of creation, among the ones that
 	pass has yet to evaluate.
 
+	An eager object that errors does not stop the rest of the pass; the first
+	error is rethrown once the pass is done.
+
 	https://fluff.blog/2024/04/16/monotonic-painting.html
 ]]
 
@@ -19,6 +22,10 @@ local Package = script.Parent.Parent
 local Types = require(Package.Types)
 local External = require(Package.External)
 local evaluate = require(Package.Graph.evaluate)
+local evaluationStack = require(Package.Graph.evaluationStack)
+
+local state = evaluationStack.state
+local addTrace = evaluationStack.addTrace
 
 -- How long should this function run before it's considered to be in an infinite
 -- cycle and error out?
@@ -36,7 +43,7 @@ local function byCreation(
 	return a.createdAt < b.createdAt
 end
 
-local function runPass(): ()
+local function evaluateRest(): ()
 	local pass = runningPass :: {Types.GraphObject}
 	while runningIndex < #pass do
 		runningIndex += 1
@@ -44,15 +51,21 @@ local function runPass(): ()
 	end
 end
 
--- Adds the stack an error was raised at, which rethrowing it loses, unless it
--- already carries one.
-local function addTrace(
-	err: unknown
-): unknown
-	if typeof(err) == "string" and string.find(err, "---- Stack trace ----", 1, true) == nil then
-		return `{err} \n---- Stack trace ----\n{debug.traceback(nil, 2)}`
+-- Entered again after an error, rather than protecting each object, which
+-- keeps one pcall per pass.
+local function runPass(): unknown?
+	local depth = state.depth
+	local firstError: unknown? = nil
+	while true do
+		local ok: boolean, err: unknown = xpcall(evaluateRest, addTrace)
+		if ok then
+			return firstError
+		end
+		evaluationStack.unwind(depth)
+		if firstError == nil then
+			firstError = err
+		end
 	end
-	return err
 end
 
 local function propagate(
@@ -74,7 +87,9 @@ local function propagate(
 					done = false
 					table.insert(invalidateList, dependent)
 					table.insert(searchInNext, dependent)
-				elseif dependent.validity == "busy" then
+				-- An edge from before the dependent's current evaluation is
+				-- ignored, as if it were gone (see evaluate).
+				elseif dependent.validity == "busy" and dependent.dependencySet[searchTarget] == dependent._generation then
 					return External.logError("infiniteLoop")
 				end
 			end
@@ -107,14 +122,15 @@ local function propagate(
 	end
 	table.sort(eagerList, byCreation)
 	runningPass, runningIndex = eagerList, 0
-	-- Restored even when an eager object errors, so that no later change joins
-	-- a pass that has stopped. A change made from an observer's callback runs
-	-- in the callback's own thread, so its error stops only that thread and
-	-- the outer pass carries on.
-	local ok: boolean, err: unknown = xpcall(runPass, addTrace)
+	-- A change made from an observer's callback runs in the callback's own
+	-- thread, so its error stops only that thread and the outer pass carries
+	-- on.
+	state.passes += 1
+	local firstError = runPass()
+	state.passes -= 1
 	runningPass, runningIndex = outerPass, outerIndex
-	if not ok then
-		error(err, 0)
+	if firstError ~= nil then
+		error(firstError, 0)
 	end
 end
 

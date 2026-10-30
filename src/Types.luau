@@ -80,6 +80,8 @@ export type GraphObject = ScopedObject & {
 	lastChange: number?,
 	timeliness: "lazy" | "eager",
 	validity: "valid" | "invalid" | "busy",
+	-- How many times it has computed; marks the edges its latest run formed.
+	_generation: number?,
 	_evaluate: (GraphObject) -> boolean
 }
 

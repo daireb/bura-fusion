@@ -9,9 +9,10 @@ local ForEach = require(Fusion.State.ForEach)
 local Value = require(Fusion.State.Value)
 local Computed = require(Fusion.State.Computed)
 local Observer = require(Fusion.Graph.Observer)
-local External = require(Fusion.External)
 local peek = require(Fusion.State.peek)
 local doCleanup = require(Fusion.Memory.doCleanup)
+
+local captureLogs = require(script.Parent.Parent.Parent.Util.captureLogs)
 
 local function byKey(key, _)
 	return key
@@ -23,26 +24,6 @@ end
 
 local function byUid(_, record)
 	return record.uid
-end
-
--- Collects the IDs of the messages logged through one External function
--- while the callback runs, and restores it even if the callback throws.
-local function captureLogs(
-	name: string,
-	callback: () -> ()
-): {string}
-	local logged = {}
-	local external = External :: any
-	local original = external[name]
-	external[name] = function(messageID)
-		table.insert(logged, messageID)
-	end
-	local ok, err = pcall(callback)
-	external[name] = original
-	if not ok then
-		error(err, 0)
-	end
-	return logged
 end
 
 return function()
@@ -376,7 +357,7 @@ return function()
 			data:set(nil)
 		end)
 		expect(#errors).to.equal(2)
-		expect(errors[1]).to.equal("callbackError")
+		expect(errors[1]).to.equal("cleanupTaskError")
 		expect(errors[2]).to.equal("forEachInputNotTable")
 		expect(cleanups).to.equal(3)
 		expect(next(peek(cells))).to.equal(nil)
