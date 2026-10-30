@@ -161,12 +161,13 @@ local function Spring<T>(
 		External.logError("scopeMissing", nil, "Springs", "myScope:Spring(goalState, speed, damping)")
 	end
 
+	-- A constant goal gets a stopwatch too, so that the setters work on it as
+	-- on a state goal; it settles on the goal on its first step and sleeps.
 	local goalState = castToState(goal)
-	local stopwatch = nil
+	local stopwatch = Stopwatch(scope, ExternalTime(scope))
+	stopwatch:unpause()
 	local wake = nil
 	if goalState ~= nil then
-		stopwatch = Stopwatch(scope, ExternalTime(scope))
-		stopwatch:unpause()
 		wake = Wake(scope, goalState, stopwatch)
 	end
 
@@ -313,27 +314,23 @@ function class._evaluate<T>(
 	if self.scope == nil then
 		return false
 	end
-	local goal = castToState(self._goal)
-	-- Allow non-state goals to pass through transparently.
-	if goal == nil then
-		self._EXTREMELY_DANGEROUS_usedAsValue = self._goal :: T
-		return false
-	end
-	local nextFrameGoal = peek(goal)
+	local nextFrameGoal = peek(self._goal)
 	-- Protect against NaN goals.
 	if nextFrameGoal ~= nextFrameGoal then
 		External.logWarn("springNanGoal")
 		-- Sleep until the goal changes again, which wakes the stopwatch.
 		self._stopwatch:pause()
 		depend(self, self._stopwatch)
-		local wake = self._wake :: Wake
-		wake:arm()
+		-- A constant goal has no wake: only a setter moves it again.
+		if self._wake ~= nil then
+			self._wake:arm()
+		end
 		return false
 	end
 	local nextFrameGoalType = typeof(nextFrameGoal)
 	local discontinuous = nextFrameGoalType ~= self._activeType
 
-	local stopwatch = self._stopwatch :: Stopwatch.Stopwatch
+	local stopwatch = self._stopwatch
 	local elapsed = peek(stopwatch)
 	depend(self, stopwatch)
 	local settled = false
@@ -425,8 +422,10 @@ function class._evaluate<T>(
 		self._activeStartV = table.create(self._activeNumSprings, 0)
 		stopwatch:pause()
 		stopwatch:zero()
-		local wake = self._wake :: Wake
-		wake:arm()
+		-- A constant goal has no wake: only a setter moves it again.
+		if self._wake ~= nil then
+			self._wake:arm()
+		end
 	end
 
 	-- Push update and check for similarity.

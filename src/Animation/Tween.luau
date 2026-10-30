@@ -37,7 +37,7 @@ export type Self<T> = Types.Tween<T> & {
 	_activeTo: T,
 	_activeTweenInfo: TweenInfo,
 	_goal: Types.UsedAs<T>,
-	_stopwatch: Stopwatch.Stopwatch?,
+	_stopwatch: Stopwatch.Stopwatch,
 	_tweenInfo: Types.UsedAs<TweenInfo>,
 }
 
@@ -58,11 +58,10 @@ local function Tween<T>(
 		External.logError("scopeMissing", nil, "Tweens", "myScope:Tween(goalState, tweenInfo)")
 	end
 
+	-- A constant goal gets a stopwatch too, so that it takes the same path as
+	-- a state goal: it starts finished on the goal, asleep.
 	local goalState = castToState(goal)
-	local stopwatch = nil
-	if goalState ~= nil then
-		stopwatch = Stopwatch(scope, ExternalTime(scope))
-	end
+	local stopwatch = Stopwatch(scope, ExternalTime(scope))
 
 	local self: Self<T> = setmetatable(
 		{
@@ -133,19 +132,16 @@ function class._evaluate<T>(
 		return false
 	end
 	local goal = castToState(self._goal)
-	-- Allow non-state goals to pass through transparently.
-	if goal == nil then
-		self._EXTREMELY_DANGEROUS_usedAsValue = self._goal :: T
-		return false
+	if goal ~= nil then
+		depend(self, goal)
 	end
-	depend(self, goal)
-	local newTweenTo = peek(goal)
+	local newTweenTo = peek(self._goal)
 	-- Protect against NaN goals.
 	if newTweenTo ~= newTweenTo then
 		External.logWarn("tweenNanGoal")
 		return false
 	end
-	local stopwatch = self._stopwatch :: Stopwatch.Stopwatch
+	local stopwatch = self._stopwatch
 	local tweenInfo = peek(self._tweenInfo) :: TweenInfo
 	-- Restart animation when the goal changes, or if the tween info changes
 	-- partway through another animation.
