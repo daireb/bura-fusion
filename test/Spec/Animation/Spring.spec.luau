@@ -377,4 +377,36 @@ return function()
 
 		doCleanup(scope)
 	end)
+
+	it("runs an observer of two springs once a frame, with both stepped", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local goal = Value(scope, 0)
+		local first = Spring(scope, goal, 20, 1)
+		local second = Spring(scope, goal, 20, 1)
+		local both = Computed(scope, function(use)
+			return {use(first), use(second)}
+		end)
+		local runs = 0
+		local mismatched = 0
+		Observer(scope, both):onChange(function()
+			runs += 1
+			local pair = peek(both)
+			if pair[1] ~= pair[2] then
+				mismatched += 1
+			end
+		end)
+		step()
+		goal:set(10)
+		for _ = 1, 10 do
+			local before = runs
+			step()
+			expect(runs - before <= 1).to.equal(true)
+		end
+		expect(runs > 0).to.equal(true)
+		expect(mismatched).to.equal(0)
+
+		doCleanup(scope)
+	end)
 end
