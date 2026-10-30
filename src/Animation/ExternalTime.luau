@@ -11,7 +11,7 @@ local Package = script.Parent.Parent
 local Types = require(Package.Types)
 local External = require(Package.External)
 -- Graph
-local change = require(Package.Graph.change)
+local changeMany = require(Package.Graph.changeMany)
 -- Utility
 local nicknames = require(Package.Utility.nicknames)
 
@@ -38,11 +38,6 @@ local activeTimers: {[Self]: true} = {}
 -- `activeTimers` are dropped by the next step.
 local stepOrder: {Self} = {}
 local stepOrderSorted = true
--- How far the running step has got through `stepOrder`, and how many of the
--- entries it passed are kept, so that an error out of a change still leaves
--- `stepOrder` compacted.
-local stepIndex = 0
-local stepKept = 0
 
 local function byCreation(
 	a: Self,
@@ -100,27 +95,11 @@ function class._evaluate(
 	return true
 end
 
--- Changing a timer can wake, drop or destroy others. Timers woken during the
--- step are appended past `count` and first change on the next step; a timer
--- that left the set is skipped, and its entry is compacted away.
-local function changeTimers(
-	count: number
-): ()
-	while stepIndex < count do
-		stepIndex += 1
-		local timer = stepOrder[stepIndex]
-		if activeTimers[timer] == nil then
-			continue
-		elseif next(timer.dependentSet) == nil then
-			activeTimers[timer] = nil
-			continue
-		end
-		stepKept += 1
-		stepOrder[stepKept] = timer
-		change(timer)
-	end
-end
-
+-- Every active timer changes in one change, so every animation steps before
+-- anything downstream of it runs, and an observer of several animations runs
+-- once, with all of them stepped. Changing them can wake, drop or destroy
+-- timers: one woken during the step is appended to `stepOrder` and first
+-- changes on the next step, and one that left the set is skipped then.
 External.bindToUpdateStep(function(
 	externalNow: number
 ): ()
@@ -129,17 +108,23 @@ External.bindToUpdateStep(function(
 		table.sort(stepOrder, byCreation)
 		stepOrderSorted = true
 	end
-	stepIndex, stepKept = 0, 0
-	local ok: boolean, err: unknown = pcall(changeTimers, #stepOrder)
-	-- Closes the gap between the kept entries and the ones the step did not
-	-- reach, including any woken during it.
-	local total = #stepOrder
-	table.move(stepOrder, stepIndex + 1, total, stepKept + 1)
-	for index = stepKept + (total - stepIndex) + 1, total do
+	local kept = 0
+	for _, timer in stepOrder do
+		if activeTimers[timer] == nil then
+			continue
+		elseif next(timer.dependentSet) == nil then
+			activeTimers[timer] = nil
+			continue
+		end
+		kept += 1
+		stepOrder[kept] = timer
+	end
+	for index = kept + 1, #stepOrder do
 		stepOrder[index] = nil
 	end
-	if not ok then
-		error(err, 0)
+	if kept > 0 then
+		-- changeMany reads the list before anything can append to it.
+		changeMany(stepOrder)
 	end
 end)
 
