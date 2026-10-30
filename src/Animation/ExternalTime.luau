@@ -38,6 +38,11 @@ local activeTimers: {[Self]: true} = {}
 -- `activeTimers` are dropped by the next step.
 local stepOrder: {Self} = {}
 local stepOrderSorted = true
+-- How far the running step has got through `stepOrder`, and how many of the
+-- entries it passed are kept, so that an error out of a change still leaves
+-- `stepOrder` compacted.
+local stepIndex = 0
+local stepKept = 0
 
 local function byCreation(
 	a: Self,
@@ -95,6 +100,27 @@ function class._evaluate(
 	return true
 end
 
+-- Changing a timer can wake, drop or destroy others. Timers woken during the
+-- step are appended past `count` and first change on the next step; a timer
+-- that left the set is skipped, and its entry is compacted away.
+local function changeTimers(
+	count: number
+): ()
+	while stepIndex < count do
+		stepIndex += 1
+		local timer = stepOrder[stepIndex]
+		if activeTimers[timer] == nil then
+			continue
+		elseif next(timer.dependentSet) == nil then
+			activeTimers[timer] = nil
+			continue
+		end
+		stepKept += 1
+		stepOrder[stepKept] = timer
+		change(timer)
+	end
+end
+
 External.bindToUpdateStep(function(
 	externalNow: number
 ): ()
@@ -103,27 +129,17 @@ External.bindToUpdateStep(function(
 		table.sort(stepOrder, byCreation)
 		stepOrderSorted = true
 	end
-	-- Changing a timer can wake, drop or destroy others. Timers woken during
-	-- the step are appended past `count` and first change on the next step; a
-	-- timer that left the set is skipped, and its entry is compacted away.
-	local count = #stepOrder
-	local kept = 0
-	for index = 1, count do
-		local timer = stepOrder[index]
-		if activeTimers[timer] == nil then
-			continue
-		elseif next(timer.dependentSet) == nil then
-			activeTimers[timer] = nil
-			continue
-		end
-		kept += 1
-		stepOrder[kept] = timer
-		change(timer)
-	end
+	stepIndex, stepKept = 0, 0
+	local ok: boolean, err: unknown = pcall(changeTimers, #stepOrder)
+	-- Closes the gap between the kept entries and the ones the step did not
+	-- reach, including any woken during it.
 	local total = #stepOrder
-	table.move(stepOrder, count + 1, total, kept + 1)
-	for index = kept + (total - count) + 1, total do
+	table.move(stepOrder, stepIndex + 1, total, stepKept + 1)
+	for index = stepKept + (total - stepIndex) + 1, total do
 		stepOrder[index] = nil
+	end
+	if not ok then
+		error(err, 0)
 	end
 end)
 
