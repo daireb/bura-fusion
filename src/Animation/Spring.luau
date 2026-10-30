@@ -57,6 +57,74 @@ class.timeliness = "eager"
 
 local METATABLE = table.freeze {__index = class}
 
+type Wake = Types.GraphObject & {
+	_goal: Types.StateObject<unknown>,
+	_stopwatch: Stopwatch.Stopwatch
+}
+
+--[[
+	Wakes a sleeping spring's stopwatch when its goal changes.
+
+	The spring itself never depends on its goal, as in Fusion 0.3. Like a
+	playing spring, a woken one picks up its goal on its next step, after
+	integrating the last frame's motion. A spring whose goal moves every frame,
+	such as another animation, would otherwise restart its stopwatch before it
+	ticked and stand still; and a goal set from downstream of the spring, such
+	as by an observer of it, would form a cycle.
+]]
+local wakeClass = {}
+wakeClass.type = "Graph"
+wakeClass.kind = "Spring.Wake"
+wakeClass.timeliness = "eager"
+-- Nothing may depend on the wake, so a goal change never reaches past it.
+wakeClass.dependentSet = table.freeze {}
+
+local WAKE_METATABLE = table.freeze {__index = wakeClass}
+
+function wakeClass._evaluate(
+	self: Wake
+): boolean
+	if self.scope == nil then
+		return false
+	end
+	depend(self, self._goal)
+	-- The spring picks up the new goal on the step its timer next changes.
+	self._stopwatch:unpause()
+	return true
+end
+
+table.freeze(wakeClass)
+
+local function Wake(
+	scope: Types.Scope<unknown>,
+	goal: Types.StateObject<unknown>,
+	stopwatch: Stopwatch.Stopwatch
+): ()
+	local self: Wake = setmetatable(
+		{
+			createdAt = os.clock(),
+			dependencySet = {},
+			lastChange = nil,
+			scope = scope,
+			validity = "invalid",
+			_goal = goal,
+			_stopwatch = stopwatch
+		},
+		WAKE_METATABLE
+	) :: any
+	local destroy = function()
+		self.scope = nil
+		for dependency in pairs(self.dependencySet) do
+			dependency.dependentSet[self] = nil
+		end
+		table.clear(self.dependencySet)
+	end
+	self.oldestTask = destroy
+	nicknames[self.oldestTask] = "Spring (internal wake)"
+	table.insert(scope, destroy)
+	evaluate(self, true)
+end
+
 local function Spring<T>(
 	scope: Types.Scope<unknown>,
 	goal: Types.UsedAs<T>,
@@ -73,6 +141,9 @@ local function Spring<T>(
 	if goalState ~= nil then
 		stopwatch = Stopwatch(scope, ExternalTime(scope))
 		stopwatch:unpause()
+		-- Made while the stopwatch plays, so that a spring which starts on a
+		-- NaN goal is not woken for it.
+		Wake(scope, goalState, stopwatch)
 	end
 
 	local speed = speed or 10
@@ -160,6 +231,8 @@ function class.addVelocity<T>(
 	end
 	self._activeStartP = table.clone(self._activeLatestP)
 	self._activeStartV = newStartV
+	-- Also the latest state, which a parameter change reconfigures from.
+	self._activeLatestV = table.clone(newStartV)
 	self._stopwatch:zero()
 	self._stopwatch:unpause()
 	change(self)
@@ -182,6 +255,8 @@ function class.setPosition<T>(
 	end
 	self._activeStartP = unpackType(newValue, newType)
 	self._activeStartV = table.clone(self._activeLatestV)
+	-- Also the latest state, which a parameter change reconfigures from.
+	self._activeLatestP = table.clone(self._activeStartP)
 	self._stopwatch:zero()
 	self._stopwatch:unpause()
 	change(self)
@@ -198,6 +273,8 @@ function class.setVelocity<T>(
 	end
 	self._activeStartP = table.clone(self._activeLatestP)
 	self._activeStartV = unpackType(newValue, newType)
+	-- Also the latest state, which a parameter change reconfigures from.
+	self._activeLatestV = table.clone(self._activeStartV)
 	self._stopwatch:zero()
 	self._stopwatch:unpause()
 	change(self)
@@ -221,10 +298,9 @@ function class._evaluate<T>(
 	-- Protect against NaN goals.
 	if nextFrameGoal ~= nextFrameGoal then
 		External.logWarn("springNanGoal")
-		-- Sleep until the goal is a number again; without the dependency it
-		-- would never evaluate again, even for a later goal.
+		-- Sleep until the goal changes again, which wakes the stopwatch.
 		self._stopwatch:pause()
-		depend(self, goal)
+		depend(self, self._stopwatch)
 		return false
 	end
 	local nextFrameGoalType = typeof(nextFrameGoal)
@@ -233,7 +309,6 @@ function class._evaluate<T>(
 	local stopwatch = self._stopwatch :: Stopwatch.Stopwatch
 	local elapsed = peek(stopwatch)
 	depend(self, stopwatch)
-	local wasAsleep = not stopwatch:isPlaying()
 	local settled = false
 
 	local oldValue = self._EXTREMELY_DANGEROUS_usedAsValue
@@ -316,21 +391,13 @@ function class._evaluate<T>(
 		stopwatch:zero()
 		stopwatch:unpause()
 	elseif settled then
-		-- Sleep: with its stopwatch stopped, the update step no longer changes
-		-- this spring, and nothing downstream re-evaluates.
+		-- Sleep at rest on the goal: with its stopwatch stopped, the update
+		-- step no longer changes this spring, and the step that wakes it
+		-- integrates from rest rather than from the motion it settled from.
+		self._activeStartP = table.clone(self._activeLatestP)
+		self._activeStartV = table.create(self._activeNumSprings, 0)
 		stopwatch:pause()
 		stopwatch:zero()
-	end
-
-	-- A moving spring picks up its goal on its next step, after integrating the
-	-- last frame's motion, so it does not depend on the goal: an animation
-	-- earlier in the same step that moved the goal would otherwise restart its
-	-- stopwatch before it ticks, every frame, and it would never move. Asleep,
-	-- it hears of a new goal only by depending on it. It keeps that dependency
-	-- through the evaluation that wakes it, so a goal that changes back before
-	-- the next step is heard too.
-	if wasAsleep or not stopwatch:isPlaying() then
-		depend(self, goal)
 	end
 
 	-- Push update and check for similarity.
