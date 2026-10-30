@@ -221,7 +221,9 @@ function class._evaluate<T>(
 	-- Protect against NaN goals.
 	if nextFrameGoal ~= nextFrameGoal then
 		External.logWarn("springNanGoal")
-		-- Without this it would never evaluate again, even for a later goal.
+		-- Sleep until the goal is a number again; without the dependency it
+		-- would never evaluate again, even for a later goal.
+		self._stopwatch:pause()
 		depend(self, goal)
 		return false
 	end
@@ -231,7 +233,7 @@ function class._evaluate<T>(
 	local stopwatch = self._stopwatch :: Stopwatch.Stopwatch
 	local elapsed = peek(stopwatch)
 	depend(self, stopwatch)
-	local wasAsleep = (stopwatch :: any)._playing == false
+	local wasAsleep = not stopwatch:isPlaying()
 	local settled = false
 
 	local oldValue = self._EXTREMELY_DANGEROUS_usedAsValue
@@ -327,7 +329,7 @@ function class._evaluate<T>(
 	-- it hears of a new goal only by depending on it. It keeps that dependency
 	-- through the evaluation that wakes it, so a goal that changes back before
 	-- the next step is heard too.
-	if wasAsleep or (stopwatch :: any)._playing == false then
+	if wasAsleep or not stopwatch:isPlaying() then
 		depend(self, goal)
 	end
 

@@ -15,7 +15,9 @@ local change = require(Package.Graph.change)
 -- Utility
 local nicknames = require(Package.Utility.nicknames)
 
-type ExternalTime = Types.StateObject<number>
+export type ExternalTime = Types.StateObject<number> & {
+	_wake: (ExternalTime) -> ()
+}
 
 type Self = ExternalTime
 

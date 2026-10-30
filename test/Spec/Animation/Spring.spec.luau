@@ -158,6 +158,26 @@ return function()
 		doCleanup(scope)
 	end)
 
+	it("stops ticking while its goal is NaN", function()
+		local expect = getfenv().expect
+
+		local scope = {}
+		local goal = Value(scope, 0)
+		local spring = Spring(scope, goal, 20, 1)
+		Observer(scope, spring):onChange(function() end)
+		goal:set(10)
+		step(5)
+		expect(isAsleep(spring)).to.equal(false)
+		goal:set(0 / 0)
+		step(2)
+		expect(isAsleep(spring)).to.equal(true)
+		goal:set(4)
+		step(240)
+		expect(peek(spring)).to.equal(4)
+
+		doCleanup(scope)
+	end)
+
 	it("keeps observers quiet while asleep", function()
 		local expect = getfenv().expect
 

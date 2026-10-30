@@ -12,6 +12,8 @@ local task = nil -- Disable usage of Roblox's task scheduler
 
 local Package = script.Parent.Parent
 local Types = require(Package.Types)
+-- Animation
+local ExternalTime = require(Package.Animation.ExternalTime)
 -- Memory
 local checkLifetime = require(Package.Memory.checkLifetime)
 -- Graph
@@ -25,7 +27,8 @@ local nicknames = require(Package.Utility.nicknames)
 export type Stopwatch = Types.StateObject<number> & {
 	zero: (Stopwatch) -> (),
 	pause: (Stopwatch) -> (),
-	unpause: (Stopwatch) -> ()
+	unpause: (Stopwatch) -> (),
+	isPlaying: (Stopwatch) -> boolean
 }
 
 type Self = Stopwatch & {
@@ -108,15 +111,20 @@ function class.unpause(
 	end
 end
 
+function class.isPlaying(
+	self: Self
+): boolean
+	return self._playing
+end
+
 function class._evaluate(
 	self: Self
 ): boolean
 	if self._playing then
 		depend(self, self._timer)
 		-- An ExternalTime is changed on update steps only while woken.
-		local timer = self._timer :: any
-		if timer._wake ~= nil then
-			timer:_wake()
+		if self._timer.kind == "ExternalTime" then
+			(self._timer :: ExternalTime.ExternalTime):_wake()
 		end
 		local currentTime = peek(self._timer)
 		local oldValue = self._EXTREMELY_DANGEROUS_usedAsValue
